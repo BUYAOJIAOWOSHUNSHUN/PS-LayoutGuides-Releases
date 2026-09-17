@@ -2,7 +2,7 @@
   "manifestVersion": 5,
   "id": "com.local.layout-guides",
   "name": "品牌版式标准规范PS插件",
-  "version": "1.8.1",
+  "version": "1.8.2",
   "main": "index.html",
   "host": {
     "app": "PS",
@@ -39,19 +39,19 @@
         "default": "品牌版式标准规范PS插件"
       },
       "minimumSize": {
-        "width": 320,
-        "height": 480
+        "width": 574,
+        "height": 400
       },
       "maximumSize": {
-        "width": 2560,
+        "width": 574,
         "height": 2560
       },
       "preferredDockedSize": {
-        "width": 380,
+        "width": 574,
         "height": 880
       },
       "preferredFloatingSize": {
-        "width": 380,
+        "width": 574,
         "height": 880
       }
     }
