@@ -236,7 +236,7 @@ function updateBleedPreview() {
   const values = service.bleedMM;
   const summary = BLEED_FIELDS.map(field => BLEED_LABELS[field] + " " + trim(toDisplay(values[field]))).join(" / ");
   el("bleedPreview").textContent = summary + " " + bleedUnit
-    + (Number.isFinite(lastResolution) ? " · " + format(lastResolution) + " PPI" : " · 画布外扩");
+    + (Number.isFinite(lastResolution) ? " · " + format(lastResolution) + " PPI" : " · 自画布边缘向内缩");
 }
 
 /* ---------- 文档信息 ---------- */
