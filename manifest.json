@@ -2,7 +2,7 @@
   "manifestVersion": 5,
   "id": "com.local.layout-guides",
   "name": "品牌版式标准规范PS插件",
-  "version": "1.8.0",
+  "version": "1.8.1",
   "main": "index.html",
   "host": {
     "app": "PS",
@@ -17,7 +17,8 @@
         "https://api.github.com",
         "https://github.com",
         "https://codeload.github.com",
-        "https://objects.githubusercontent.com"
+        "https://objects.githubusercontent.com",
+        "https://raw.githubusercontent.com"
       ]
     },
     "launchProcess": {
