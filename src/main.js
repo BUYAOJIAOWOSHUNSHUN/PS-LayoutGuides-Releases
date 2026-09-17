@@ -344,9 +344,26 @@ async function toggleVisibility() {
 
 /* ---------- 在线更新 ---------- */
 
+// 页脚只有两行空间，错误信息里那种超长 URL 会把整个页脚撑变形（真机实测过）。
+// 这里把 URL 收成「域名/…/末段」，保留辨识度又不占宽度。
+function tidyMessage(text) {
+  return String(text == null ? "" : text).replace(/https?:\/\/[^\s"']+/g, function (url) {
+    const clean = url.replace(/[.,;:）)】\]]+$/, "");
+    const slash = clean.indexOf("/", 8);
+    if (slash < 0) return clean;
+    const segments = clean.slice(slash + 1).split("/").filter(Boolean);
+    const tail = segments.length ? segments[segments.length - 1] : "";
+    return clean.slice(0, slash) + "/…/" + tail;
+  });
+}
+
+// 没有内容时整行收起：页脚只在真正有更新消息时才多占一行，
+// 平时保持「状态条 + 检查更新/版权」两行，把高度留给上面的功能区。
 function setUpdateStatus(message, error) {
-  el("updateStatus").textContent = message;
-  el("updateStatus").className = error ? "muted error-text" : "muted";
+  const text = tidyMessage(message);
+  const node = el("updateStatus");
+  node.textContent = text;
+  node.className = (error ? "muted error-text" : "muted") + (text ? "" : " hidden");
 }
 
 function releasePage() {
@@ -431,7 +448,8 @@ function start() {
   if (!initialized) {
     el("headerVersion").textContent = VERSION;
     el("versionText").textContent = VERSION;
-    setUpdateStatus(REPO ? "可以检查更新。" : "更新源待配置");
+    // 初始不留提示文字：页脚只有点「检查更新」时才展开这一行。
+    setUpdateStatus(REPO ? "" : "更新源待配置");
     // 品牌菜单与出血输入依赖图片和输入框组件，单独兜错，
     // 避免它们出问题时连累辅助线按钮整体不可用。
     try { buildBrandRow(); } catch (error) { console.error("品牌菜单初始化失败:", error); }
