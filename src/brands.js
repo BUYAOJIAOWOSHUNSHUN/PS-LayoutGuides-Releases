@@ -34,7 +34,7 @@ const BRANDS = [
     endorsementFactor: 0.3,
     endorsementMaxFactor: 0.8,
     // 出血默认值，单位 mm
-    bleedDefault: { top: 3, right: 3, bottom: 3, left: 3 }
+    bleedDefault: { top: 0, right: 0, bottom: 0, left: 0 }
   },
   {
     id: "aion",
@@ -44,7 +44,7 @@ const BRANDS = [
     logoWidth: 26,
     logoHeight: 12.2,
     available: false,
-    bleedDefault: { top: 3, right: 3, bottom: 3, left: 3 }
+    bleedDefault: { top: 0, right: 0, bottom: 0, left: 0 }
   },
   {
     id: "hyper",
@@ -54,7 +54,7 @@ const BRANDS = [
     logoWidth: 20.8,
     logoHeight: 17,
     available: false,
-    bleedDefault: { top: 3, right: 3, bottom: 3, left: 3 }
+    bleedDefault: { top: 0, right: 0, bottom: 0, left: 0 }
   }
 ];
 
