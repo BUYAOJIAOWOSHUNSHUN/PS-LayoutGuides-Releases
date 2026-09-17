@@ -36,12 +36,13 @@ function errorText(error) {
 }
 
 // 当前文档已有的辅助线组合，用于「已是最新」提示文案。
-function describeCurrent(includeLOGO, includeEndorsement, includeBleed) {
+function describeCurrent(includeMargin, includeLOGO, includeEndorsement, includeBleed) {
   const parts = [];
   if (includeLOGO) parts.push("LOGO 高度线");
   if (includeEndorsement) parts.push("背书参考线");
   if (includeBleed) parts.push("出血线");
-  return parts.length ? "版心与 " + parts.join("、") + "已是最新。" : "四条版心辅助线已是最新。";
+  if (includeMargin) return parts.length ? "版心与 " + parts.join("、") + "已是最新。" : "四条版心辅助线已是最新。";
+  return parts.length ? parts.join("、") + "已是最新。" : "没有需要更新的辅助线。";
 }
 
 class GuideService {
@@ -50,6 +51,7 @@ class GuideService {
     // Keep all committed IDs for this document lifetime, including absent IDs.
     // Undo/redo may bring back an earlier generation. Never persist across reload.
     this.ledger = new Map();
+    this.marginLedger = new Map();
     this.logoLedger = new Map();
     this.endorsementLedger = new Map();
     this.bleedLedger = new Map();
@@ -81,6 +83,7 @@ class GuideService {
     const open = new Set(this.host.openIds());
     for (const id of this.ledger.keys()) if (!open.has(id)) {
       this.ledger.delete(id);
+      this.marginLedger.delete(id);
       this.logoLedger.delete(id);
       this.endorsementLedger.delete(id);
       this.bleedLedger.delete(id);
@@ -139,14 +142,19 @@ class GuideService {
         const before = this.host.listGuides(doc);
         const owned = before.filter(g => known.has(g.id));
         const others = mode === "clear" ? [] : before.filter(g => !known.has(g.id));
+        const marginIds = this.marginLedger.get(doc.id) || new Set();
         const logoIds = this.logoLedger.get(doc.id) || new Set();
         const endorsementIds = this.endorsementLedger.get(doc.id) || new Set();
         const bleedIds = this.bleedLedger.get(doc.id) || new Set();
-        // 已建过的分组在重建其它分组时一并保留，避免互相覆盖。
+        // 每个分组只在自己那个按钮被点时才主动创建；其它已建过的分组原样保留，互不覆盖。
+        // 版心线虽然是最基础的一组，但同样不该被「创建出血线」「LOGO 高度线」顺带生成出来 ——
+        // 之前这里无条件塞进 guideTargets，导致点任何按钮都会先画四条版心线。
+        const includeMargin = mode !== "clear" && (mode === "update" || owned.some(g => marginIds.has(g.id)));
         const includeLOGO = mode !== "clear" && (mode === "logo" || owned.some(g => logoIds.has(g.id)));
         const includeEndorsement = mode !== "clear" && (mode === "endorsement" || owned.some(g => endorsementIds.has(g.id)));
         const includeBleed = mode !== "clear" && (mode === "bleed" || owned.some(g => bleedIds.has(g.id)));
-        const canvasTargets = mode === "clear" ? [] : guideTargets(layout);
+        const canvasTargets = includeMargin ? guideTargets(layout).slice() : [];
+        const marginIndices = includeMargin ? canvasTargets.map((item, index) => index) : [];
         // Keep content margins independent from the LOGO's local safety inset.
         const logoIndices = [];
         if (includeLOGO) {
@@ -174,7 +182,7 @@ class GuideService {
           direction: t.direction, coordinate: relativeCoordinate(t, origin)
         }));
         if (mode !== "clear" && matchesTargets(owned, targets)) {
-          return await this.showResult(doc, describeCurrent(includeLOGO, includeEndorsement, includeBleed));
+          return await this.showResult(doc, describeCurrent(includeMargin, includeLOGO, includeEndorsement, includeBleed));
         }
         if (mode === "clear" && !before.length) {
           return { message: "当前文档没有辅助线。" };
@@ -213,6 +221,8 @@ class GuideService {
         }
         for (const id of created) known.add(id);
         this.ledger.set(doc.id, known);
+        if (includeMargin) for (const index of marginIndices) marginIds.add(created[index]);
+        this.marginLedger.set(doc.id, marginIds);
         if (includeLOGO) for (const index of logoIndices) logoIds.add(created[index]);
         this.logoLedger.set(doc.id, logoIds);
         if (includeEndorsement) endorsementIds.add(created[endorsementIndex]);
@@ -220,7 +230,7 @@ class GuideService {
         if (includeBleed) for (const index of bleedIndices) bleedIds.add(created[index]);
         this.bleedLedger.set(doc.id, bleedIds);
         if (mode === "clear") return { message: "已清除当前文档的全部辅助线。" };
-        return await this.showResult(doc, buildMessage(mode, includeLOGO, includeEndorsement, includeBleed, logoIndices));
+        return await this.showResult(doc, buildMessage(mode, includeMargin, includeLOGO, includeEndorsement, includeBleed, logoIndices));
       }, name);
     } finally {
       this.busy = false;
@@ -228,13 +238,14 @@ class GuideService {
   }
 }
 
-function buildMessage(mode, includeLOGO, includeEndorsement, includeBleed, logoIndices) {
+function buildMessage(mode, includeMargin, includeLOGO, includeEndorsement, includeBleed, logoIndices) {
   if (mode === "bleed") return "已更新出血辅助线（画布外扩，与版心线同色）。";
   const parts = [];
   if (includeLOGO) parts.push("LOGO 高度线" + (logoIndices.length > 1 ? "（含顶部/左侧安全线）" : ""));
   if (includeEndorsement) parts.push("背书参考线（0.3H，另需核对正文大小）");
   if (includeBleed) parts.push("出血线");
-  return parts.length ? "已更新版心与 " + parts.join("、") + "。" : "已更新四条版心辅助线。";
+  if (includeMargin) return parts.length ? "已更新版心与 " + parts.join("、") + "。" : "已更新四条版心辅助线。";
+  return parts.length ? "已更新 " + parts.join("、") + "。" : "没有需要更新的辅助线。";
 }
 
 module.exports = { GuideService, matchesTargets, errorText };
