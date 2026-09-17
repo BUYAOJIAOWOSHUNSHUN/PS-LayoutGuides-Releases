@@ -8,7 +8,7 @@
 <body>
   <div class="panel">
     <header class="toolbar">
-      <div class="heading">品牌版式标准规范 <span class="version" id="headerVersion">1.8.0</span></div>
+      <div class="heading">品牌版式标准规范 <span class="version" id="headerVersion">1.8.1</span></div>
       <div class="brand-block">
         <div id="brandRow" class="brand-row" aria-label="品牌标准"></div>
       </div>
@@ -125,13 +125,12 @@
     <footer class="panel-footer">
       <div id="status" role="status" aria-live="polite">正在启动插件…</div>
       <div class="update-row">
-        <span class="update-version">当前 v<span id="versionText">1.8.0</span></span>
         <sp-button id="checkUpdate" variant="secondary" class="update-button"><span class="button-label">检查更新</span></sp-button>
+        <span class="signature">v<span id="versionText">1.8.1</span> · ©蛋生品牌设计</span>
       </div>
       <sp-button id="installUpdate" variant="cta" class="primary hidden">下载并安装更新</sp-button>
       <sp-button id="openRelease" variant="secondary" class="release-button hidden">打开发布页</sp-button>
-      <div id="updateStatus" class="muted">—</div>
-      <div class="signature">©蛋生品牌设计 · 仅供内部使用</div>
+      <div id="updateStatus" class="muted hidden"></div>
     </footer>
   </div>
   <script src="bootstrap.js"></script>
