@@ -1,0 +1,107 @@
+/* UXP 面板：Flex + 明确外边距；不依赖 grid、gap 或绝对定位。 */
+html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #24262a; color: #edf0f4; font-family: Arial, "Microsoft YaHei", sans-serif; font-size: 13px; }
+.panel { display: flex; flex-direction: column; width: 100%; height: 100%; min-width: 0; overflow: hidden; }
+.hidden { display: none !important; }
+.toolbar { display: flex; flex-direction: column; flex-shrink: 0; padding: 16px 16px 0; background: #292c31; border-bottom: 1px solid #41464e; }
+.heading { display: flex; align-items: center; justify-content: space-between; font-size: 16px; font-weight: 600; margin-bottom: 14px; }
+.version { color: #aeb8c4; font-size: 11px; font-weight: 400; margin-left: 8px; }
+
+/* 品牌图形统一按同一宽度对齐（高度写在 brands.js），图形与文字之间只留 5px。 */
+.brand-block { margin-bottom: 14px; }
+.brand-row { display: flex; flex-direction: row; }
+.brand-button { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center; height: 40px; padding: 0 4px; margin-right: 8px; border-radius: 5px; background: #31353b; border: 1px solid #464c55; box-sizing: border-box; }
+.brand-button:last-child { margin-right: 0; }
+.brand-button.active { background: #30445f; border-color: #729fda; }
+.brand-button.unavailable { background: #2c3035; border-color: #3d424b; }
+.brand-mark { display: block; flex-shrink: 0; margin-right: 5px; }
+.brand-button.unavailable .brand-mark { opacity: 0.48; }
+.brand-name { color: #edf2f9; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.brand-button.unavailable .brand-name { color: #929ba8; }
+.tabs { display: flex; flex-direction: row; }
+.tab { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center; padding: 10px 0 11px; color: #a9b3c0; font-weight: 600; font-size: 13px; border-bottom: 2px solid transparent; }
+.tab.active { color: #f1f5fb; border-bottom-color: #78a9ed; }
+.tab-tag { font-size: 10px; margin-left: 5px; color: #a3b4ca; }
+.tab.active .tab-tag { color: #a5caff; }
+
+/* 宽度跟随窗口，只有中间内容滚动。参数区统一最小高度，内容多时自然撑开。 */
+.scroll-content { flex: 1; min-height: 0; min-width: 0; overflow-y: auto; overflow-x: hidden; padding: 14px 16px; }
+.document-card { padding-bottom: 14px; }
+.document-name { font-size: 13px; font-weight: 600; line-height: 19px; overflow-wrap: break-word; }
+.muted, small { display: block; color: #acb5c1; font-size: 11px; line-height: 17px; margin-top: 3px; overflow-wrap: break-word; }
+.page { display: block; min-height: 285px; box-sizing: border-box; }
+.section-heading { display: flex; align-items: center; justify-content: space-between; min-height: 24px; margin-bottom: 8px; }
+.section-title { font-size: 13px; font-weight: 600; color: #e7edf5; }
+.section-caption { font-size: 10px; color: #a0aab8; margin-left: 8px; }
+.parameter-card { display: block; padding: 0 12px; background: #2b2e33; border: 1px solid #404650; border-radius: 6px; box-sizing: border-box; }
+.facts { display: flex; flex-direction: row; flex-wrap: wrap; padding: 9px 0; border-bottom: 1px solid #41464e; }
+.row { display: flex; align-items: center; font-size: 11px; line-height: 17px; }
+.row:first-child { margin-right: 18px; }
+.row span { color: #aab4c1; margin-right: 6px; }
+strong { font-weight: 500; min-width: 0; }
+.metric { padding: 10px 0; border-bottom: 1px solid #40454e; }
+.metric-row { display: flex; align-items: center; justify-content: space-between; min-width: 0; }
+label { color: #cbd3de; font-size: 12px; margin-right: 8px; flex-shrink: 0; }
+.value { font-size: 18px; line-height: 23px; font-weight: 600; color: #e2eeff; text-align: right; overflow-wrap: break-word; }
+.last-metric { border-bottom: none; }
+
+/* 出血：左侧小锁，2×2 数值，各有独立上下箭头。 */
+.unit-switch { display: flex; flex-direction: row; border: 1px solid #545d6a; border-radius: 4px; overflow: hidden; }
+.unit-option { padding: 3px 9px; font-size: 11px; color: #abb5c4; }
+.unit-option.active { background: #425f85; color: #ffffff; }
+.bleed-card { padding: 12px; }
+.bleed-body { display: flex; flex-direction: row; align-items: center; }
+.lock-button { width: 28px; height: 30px; flex-shrink: 0; margin-right: 8px; display: flex; align-items: center; justify-content: center; background: #353a42; border: 1px solid #505867; border-radius: 4px; box-sizing: border-box; }
+.lock-button.locked { background: #4b4333; border-color: #bfa36c; }
+/* 锁图标：锁定 = 闭合锁（亮黄），解锁 = 开口锁（灰蓝）。两个状态各一张 PNG，只切 src。 */
+.icon-lock { display: block; width: 20px; height: 20px; flex-shrink: 0; }
+.bleed-grid { flex: 1; min-width: 0; display: flex; flex-direction: row; flex-wrap: wrap; }
+.bleed-cell { width: 50%; min-width: 0; display: flex; align-items: center; padding: 4px 0; box-sizing: border-box; }
+.bleed-cell:nth-child(odd) { padding-right: 4px; }
+.bleed-cell:nth-child(even) { padding-left: 4px; }
+.bleed-label { width: 17px; color: #cbd3de; font-size: 12px; flex-shrink: 0; }
+.bleed-input { flex: 1; min-width: 0; height: 36px; display: flex; align-items: center; border: 1px solid #606a79; border-radius: 4px; background: #22252a; padding-left: 6px; box-sizing: border-box; }
+.bleed-input sp-textfield { flex: 1; width: 0; min-width: 0; height: 30px; min-height: 30px; margin: 0; padding: 0; border: none; background: transparent; --spectrum-textfield-border-color: transparent; --spectrum-textfield-background-color: transparent; }
+.bleed-unit { font-size: 10px; color: #aeb9c8; flex-shrink: 0; margin: 0 5px 0 2px; }
+.stepper { display: flex; flex-direction: column; width: 23px; height: 34px; flex-shrink: 0; border-left: 1px solid #4b5360; }
+.step-up, .step-down { display: flex; flex: 1; align-items: center; justify-content: center; background: #363d48; }
+.step-up { border-bottom: 1px solid #4b5360; border-radius: 0 3px 0 0; }
+.step-down { border-radius: 0 0 3px 0; }
+.chevron { display: block; width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; }
+.chevron.up { border-bottom: 4px solid #d9e4f4; }
+.chevron.down { border-top: 4px solid #d9e4f4; }
+/* 「创建出血线」与左侧状态文字同一条中线：.muted 自带 3px 上边距，这里要抹掉。 */
+.bleed-create-row { display: flex; align-items: center; justify-content: space-between; margin-top: 12px; padding-top: 10px; border-top: 1px solid #424954; }
+.bleed-create-row .muted { margin-top: 0; line-height: 18px; }
+#bleedPreview { margin-top: 8px; font-size: 10px; }
+
+/* 统一按钮：三个生成按钮相同全宽、36px 高，8px 间距。 */
+sp-button { display: flex; align-items: center; justify-content: center; text-align: center; box-sizing: border-box; margin: 0; flex-shrink: 0; }
+.button-label { display: block; white-space: nowrap; font-size: 12px; font-weight: 600; line-height: 18px; }
+.guide-section { margin-top: 12px; }
+.guide-actions { display: flex; flex-direction: column; }
+sp-button.guide-button { width: 100%; min-width: 0; height: 36px; min-height: 36px; margin-top: 8px; }
+sp-button.guide-button:first-child { margin-top: 0; }
+sp-button.compact-button { width: 102px; min-width: 102px; height: 32px; min-height: 32px; }
+sp-button.compact-button .button-label { font-size: 12px; }
+.bottom-actions { display: flex; flex-direction: row; padding-top: 14px; margin-top: 14px; border-top: 1px solid #424954; }
+sp-button.utility-button { flex: 1; width: 0; min-width: 0; height: 36px; min-height: 36px; padding: 0 6px; }
+sp-button.utility-button:first-child { margin-right: 8px; }
+.utility-button .button-label { margin-left: 8px; font-size: 12px; }
+.delete-note { font-size: 10px; margin-top: 7px; }
+/* 垃圾桶：PNG 图标（原尺寸 14×16 缩小 10%）。改尺寸只改这两个数字。 */
+.icon-trash { display: block; width: 12.6px; height: 14.4px; flex-shrink: 0; }
+.icon-eye { display: block; width: 16px; height: 16px; flex-shrink: 0; }
+sp-button[disabled] .button-label, sp-button[disabled] .icon-trash, sp-button[disabled] .icon-eye { opacity: 0.45; }
+#status { display: block; margin: 0 0 9px; padding: 6px 9px; font-size: 11px; line-height: 16px; color: #bdd4ef; background: #2a3645; border-radius: 4px; overflow-wrap: break-word; }
+#status.error { color: #ffd3c5; background: #46352f; }
+
+/* 更新与版权固定在窗口底部，不被大段空白推走。 */
+.panel-footer { flex-shrink: 0; padding: 10px 16px 9px; border-top: 1px solid #424954; background: #292c31; max-height: 40%; overflow-y: auto; }
+.update-row { display: flex; align-items: center; justify-content: space-between; }
+.update-version { color: #aeb7c4; font-size: 11px; margin-right: 8px; }
+sp-button.update-button { width: 76px; min-width: 76px; height: 26px; min-height: 26px; }
+sp-button.update-button .button-label { font-size: 11px; font-weight: 400; }
+sp-button.primary, sp-button.release-button { width: 100%; height: 34px; min-height: 34px; margin-top: 8px; }
+#updateStatus { font-size: 10px; line-height: 15px; }
+.muted.error-text { color: #ffd3c5; }
+.signature { color: #aeb7c4; font-size: 10px; line-height: 16px; text-align: center; margin-top: 7px; }
