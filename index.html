@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="styles.css">
+  <title>品牌版式标准规范PS插件</title>
+</head>
+<body>
+  <div class="panel">
+    <header class="toolbar">
+      <div class="heading">品牌版式标准规范 <span class="version" id="headerVersion">1.8.0</span></div>
+      <div class="brand-block">
+        <div id="brandRow" class="brand-row" aria-label="品牌标准"></div>
+      </div>
+      <div class="tabs" role="tablist">
+        <div id="tabScreen" class="tab active" role="tab" tabindex="0" aria-selected="true">屏幕标准 <span class="tab-tag">RGB</span></div>
+        <div id="tabPrint" class="tab" role="tab" tabindex="0" aria-selected="false">印刷品 <span class="tab-tag">CMYK</span></div>
+      </div>
+    </header>
+
+    <div class="scroll-content">
+      <div class="document-card">
+        <div id="documentName" class="document-name">请打开 Photoshop 文档</div>
+        <div id="dimensions" class="muted">以整个文档画布为基准</div>
+      </div>
+
+      <section id="pageScreen" class="page">
+        <div class="section-heading"><span class="section-title">尺寸与比例</span><span class="section-caption">当前品牌标准</span></div>
+        <div class="parameter-card">
+          <div class="facts">
+            <div class="row"><span>方向</span><strong id="orientation">—</strong></div>
+            <div class="row"><span>长短边比</span><strong id="ratio">—</strong></div>
+          </div>
+          <section class="metric">
+            <div class="metric-row"><label>版心边距 X</label><strong id="marginX" class="value">—</strong></div>
+            <small id="marginRule">—</small>
+          </section>
+          <section class="metric">
+            <div class="metric-row"><label>LOGO 建议高度</label><strong id="logoHeight" class="value">—</strong></div>
+            <small id="logoRule">—</small>
+            <small id="logoSafety">—</small>
+          </section>
+          <section class="metric last-metric">
+            <div class="metric-row"><label>背书参考高度</label><strong id="endorsementHeight" class="value">—</strong></div>
+            <small id="endorsementRule">—</small>
+          </section>
+        </div>
+      </section>
+
+      <section id="pagePrint" class="page hidden">
+        <div class="section-heading">
+          <span class="section-title">出血设置</span>
+          <div class="unit-switch" aria-label="出血单位">
+            <div id="unitMM" class="unit-option active" role="button" tabindex="0">mm</div>
+            <div id="unitCM" class="unit-option" role="button" tabindex="0">cm</div>
+          </div>
+        </div>
+        <div class="parameter-card bleed-card">
+          <div class="bleed-body">
+            <div id="lock" class="lock-button unlocked" role="button" tabindex="0" aria-label="锁定四边同步" aria-pressed="false">
+              <img id="lockIcon" class="icon-lock" src="assets/icon-unlock.png" alt="">
+            </div>
+            <div class="bleed-grid">
+              <div class="bleed-cell">
+                <span class="bleed-label">上</span>
+                <div class="bleed-input">
+                  <sp-textfield id="bleed-top" placeholder="3" aria-label="上出血"></sp-textfield><span class="bleed-unit" id="unit-top">mm</span>
+                  <div class="stepper"><div id="step-up-top" class="step-up" role="button" tabindex="0" aria-label="上出血增加 1"><span class="chevron up"></span></div><div id="step-down-top" class="step-down" role="button" tabindex="0" aria-label="上出血减少 1"><span class="chevron down"></span></div></div>
+                </div>
+              </div>
+              <div class="bleed-cell">
+                <span class="bleed-label">下</span>
+                <div class="bleed-input">
+                  <sp-textfield id="bleed-bottom" placeholder="3" aria-label="下出血"></sp-textfield><span class="bleed-unit" id="unit-bottom">mm</span>
+                  <div class="stepper"><div id="step-up-bottom" class="step-up" role="button" tabindex="0" aria-label="下出血增加 1"><span class="chevron up"></span></div><div id="step-down-bottom" class="step-down" role="button" tabindex="0" aria-label="下出血减少 1"><span class="chevron down"></span></div></div>
+                </div>
+              </div>
+              <div class="bleed-cell">
+                <span class="bleed-label">左</span>
+                <div class="bleed-input">
+                  <sp-textfield id="bleed-left" placeholder="3" aria-label="左出血"></sp-textfield><span class="bleed-unit" id="unit-left">mm</span>
+                  <div class="stepper"><div id="step-up-left" class="step-up" role="button" tabindex="0" aria-label="左出血增加 1"><span class="chevron up"></span></div><div id="step-down-left" class="step-down" role="button" tabindex="0" aria-label="左出血减少 1"><span class="chevron down"></span></div></div>
+                </div>
+              </div>
+              <div class="bleed-cell">
+                <span class="bleed-label">右</span>
+                <div class="bleed-input">
+                  <sp-textfield id="bleed-right" placeholder="3" aria-label="右出血"></sp-textfield><span class="bleed-unit" id="unit-right">mm</span>
+                  <div class="stepper"><div id="step-up-right" class="step-up" role="button" tabindex="0" aria-label="右出血增加 1"><span class="chevron up"></span></div><div id="step-down-right" class="step-down" role="button" tabindex="0" aria-label="右出血减少 1"><span class="chevron down"></span></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="bleed-create-row">
+            <span id="bleedGuideState" class="muted">尚未创建</span>
+            <sp-button id="bleed" variant="cta" class="compact-button" disabled><span class="button-label">创建出血线</span></sp-button>
+          </div>
+          <div id="bleedPreview" class="muted">按文档分辨率换算</div>
+        </div>
+      </section>
+
+      <!-- 共用一组按钮：两个页签的宽度、高度与间距始终一致。 -->
+      <section class="guide-section">
+        <div class="section-heading"><span class="section-title">生成辅助线</span><span class="section-caption">按当前品牌标准</span></div>
+        <div class="guide-actions">
+          <sp-button id="update" variant="cta" class="guide-button" disabled><span class="button-label">版心线</span></sp-button>
+          <sp-button id="logo" variant="cta" class="guide-button" disabled><span class="button-label">LOGO 高度线</span></sp-button>
+          <sp-button id="endorsement" variant="cta" class="guide-button" disabled><span class="button-label">背书高度线</span></sp-button>
+        </div>
+      </section>
+
+      <div class="bottom-actions">
+        <sp-button id="clear" variant="secondary" class="utility-button" disabled aria-label="删除全部辅助线">
+          <img id="trashIcon" class="icon-trash" src="assets/icon-trash.png" alt="">
+          <span class="button-label">删除辅助线</span>
+        </sp-button>
+        <sp-button id="visibility" variant="secondary" class="utility-button" disabled>
+          <img id="eyeIcon" class="icon-eye" src="assets/icon-eye.png" alt="">
+          <span id="visibilityLabel" class="button-label">隐藏辅助线</span>
+        </sp-button>
+      </div>
+      <small class="delete-note">删除会清空当前文档全部辅助线，含手动添加的线。</small>
+    </div>
+
+    <footer class="panel-footer">
+      <div id="status" role="status" aria-live="polite">正在启动插件…</div>
+      <div class="update-row">
+        <span class="update-version">当前 v<span id="versionText">1.8.0</span></span>
+        <sp-button id="checkUpdate" variant="secondary" class="update-button"><span class="button-label">检查更新</span></sp-button>
+      </div>
+      <sp-button id="installUpdate" variant="cta" class="primary hidden">下载并安装更新</sp-button>
+      <sp-button id="openRelease" variant="secondary" class="release-button hidden">打开发布页</sp-button>
+      <div id="updateStatus" class="muted">—</div>
+      <div class="signature">©蛋生品牌设计 · 仅供内部使用</div>
+    </footer>
+  </div>
+  <script src="bootstrap.js"></script>
+</body>
+</html>
