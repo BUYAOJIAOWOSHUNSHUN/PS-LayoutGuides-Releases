@@ -50,13 +50,14 @@ function guideTargets(layout) {
   ];
 }
 
-// 出血线：画布外扩出血值的 4 条线（上下左右可各自不同）。
+// 出血线：从画布边缘**向内**缩出血值的 4 条线（上下左右可各自不同）。
+// 注意是往画面里面缩，不是往外扩 —— 外面那圈画布根本看不到，线画了也白画。
 function bleedTargets(layout, bleedPx) {
   return [
-    { direction: "vertical", coordinate: -bleedPx.left },
-    { direction: "vertical", coordinate: layout.width + bleedPx.right },
-    { direction: "horizontal", coordinate: -bleedPx.top },
-    { direction: "horizontal", coordinate: layout.height + bleedPx.bottom }
+    { direction: "vertical", coordinate: bleedPx.left },
+    { direction: "vertical", coordinate: layout.width - bleedPx.right },
+    { direction: "horizontal", coordinate: bleedPx.top },
+    { direction: "horizontal", coordinate: layout.height - bleedPx.bottom }
   ];
 }
 
