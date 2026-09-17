@@ -8,7 +8,7 @@
 <body>
   <div class="panel">
     <header class="toolbar">
-      <div class="heading">品牌版式标准规范 <span class="version" id="headerVersion">1.8.1</span></div>
+      <div class="heading">品牌版式标准规范 <span class="version" id="headerVersion">1.8.2</span></div>
       <div class="brand-block">
         <div id="brandRow" class="brand-row" aria-label="品牌标准"></div>
       </div>
@@ -64,29 +64,25 @@
               <div class="bleed-cell">
                 <span class="bleed-label">上</span>
                 <div class="bleed-input">
-                  <sp-textfield id="bleed-top" placeholder="3" aria-label="上出血"></sp-textfield><span class="bleed-unit" id="unit-top">mm</span>
-                  <div class="stepper"><div id="step-up-top" class="step-up" role="button" tabindex="0" aria-label="上出血增加 1"><span class="chevron up"></span></div><div id="step-down-top" class="step-down" role="button" tabindex="0" aria-label="上出血减少 1"><span class="chevron down"></span></div></div>
+                  <div class="stepper"><div id="step-up-top" class="step-up" role="button" tabindex="0" aria-label="上出血增加 1"><img class="chevron" src="assets/chevron-up.png" alt=""></div><div id="step-down-top" class="step-down" role="button" tabindex="0" aria-label="上出血减少 1"><img class="chevron" src="assets/chevron-down.png" alt=""></div></div><sp-textfield id="bleed-top" quiet placeholder="0" aria-label="上出血"></sp-textfield><span class="bleed-unit" id="unit-top">mm</span>
                 </div>
               </div>
               <div class="bleed-cell">
                 <span class="bleed-label">下</span>
                 <div class="bleed-input">
-                  <sp-textfield id="bleed-bottom" placeholder="3" aria-label="下出血"></sp-textfield><span class="bleed-unit" id="unit-bottom">mm</span>
-                  <div class="stepper"><div id="step-up-bottom" class="step-up" role="button" tabindex="0" aria-label="下出血增加 1"><span class="chevron up"></span></div><div id="step-down-bottom" class="step-down" role="button" tabindex="0" aria-label="下出血减少 1"><span class="chevron down"></span></div></div>
+                  <div class="stepper"><div id="step-up-bottom" class="step-up" role="button" tabindex="0" aria-label="下出血增加 1"><img class="chevron" src="assets/chevron-up.png" alt=""></div><div id="step-down-bottom" class="step-down" role="button" tabindex="0" aria-label="下出血减少 1"><img class="chevron" src="assets/chevron-down.png" alt=""></div></div><sp-textfield id="bleed-bottom" quiet placeholder="0" aria-label="下出血"></sp-textfield><span class="bleed-unit" id="unit-bottom">mm</span>
                 </div>
               </div>
               <div class="bleed-cell">
                 <span class="bleed-label">左</span>
                 <div class="bleed-input">
-                  <sp-textfield id="bleed-left" placeholder="3" aria-label="左出血"></sp-textfield><span class="bleed-unit" id="unit-left">mm</span>
-                  <div class="stepper"><div id="step-up-left" class="step-up" role="button" tabindex="0" aria-label="左出血增加 1"><span class="chevron up"></span></div><div id="step-down-left" class="step-down" role="button" tabindex="0" aria-label="左出血减少 1"><span class="chevron down"></span></div></div>
+                  <div class="stepper"><div id="step-up-left" class="step-up" role="button" tabindex="0" aria-label="左出血增加 1"><img class="chevron" src="assets/chevron-up.png" alt=""></div><div id="step-down-left" class="step-down" role="button" tabindex="0" aria-label="左出血减少 1"><img class="chevron" src="assets/chevron-down.png" alt=""></div></div><sp-textfield id="bleed-left" quiet placeholder="0" aria-label="左出血"></sp-textfield><span class="bleed-unit" id="unit-left">mm</span>
                 </div>
               </div>
               <div class="bleed-cell">
                 <span class="bleed-label">右</span>
                 <div class="bleed-input">
-                  <sp-textfield id="bleed-right" placeholder="3" aria-label="右出血"></sp-textfield><span class="bleed-unit" id="unit-right">mm</span>
-                  <div class="stepper"><div id="step-up-right" class="step-up" role="button" tabindex="0" aria-label="右出血增加 1"><span class="chevron up"></span></div><div id="step-down-right" class="step-down" role="button" tabindex="0" aria-label="右出血减少 1"><span class="chevron down"></span></div></div>
+                  <div class="stepper"><div id="step-up-right" class="step-up" role="button" tabindex="0" aria-label="右出血增加 1"><img class="chevron" src="assets/chevron-up.png" alt=""></div><div id="step-down-right" class="step-down" role="button" tabindex="0" aria-label="右出血减少 1"><img class="chevron" src="assets/chevron-down.png" alt=""></div></div><sp-textfield id="bleed-right" quiet placeholder="0" aria-label="右出血"></sp-textfield><span class="bleed-unit" id="unit-right">mm</span>
                 </div>
               </div>
             </div>
@@ -111,12 +107,16 @@
 
       <div class="bottom-actions">
         <sp-button id="clear" variant="secondary" class="utility-button" disabled aria-label="删除全部辅助线">
-          <img id="trashIcon" class="icon-trash" src="assets/icon-trash.png" alt="">
-          <span class="button-label">删除辅助线</span>
+          <span class="button-inner">
+            <img id="trashIcon" class="icon-trash" src="assets/icon-trash.png" alt="">
+            <span class="button-label">删除辅助线</span>
+          </span>
         </sp-button>
         <sp-button id="visibility" variant="secondary" class="utility-button" disabled>
-          <img id="eyeIcon" class="icon-eye" src="assets/icon-eye.png" alt="">
-          <span id="visibilityLabel" class="button-label">隐藏辅助线</span>
+          <span class="button-inner">
+            <img id="eyeIcon" class="icon-eye" src="assets/icon-eye.png" alt="">
+            <span id="visibilityLabel" class="button-label">隐藏辅助线</span>
+          </span>
         </sp-button>
       </div>
       <small class="delete-note">删除会清空当前文档全部辅助线，含手动添加的线。</small>
@@ -126,7 +126,7 @@
       <div id="status" role="status" aria-live="polite">正在启动插件…</div>
       <div class="update-row">
         <sp-button id="checkUpdate" variant="secondary" class="update-button"><span class="button-label">检查更新</span></sp-button>
-        <span class="signature">v<span id="versionText">1.8.1</span> · ©蛋生品牌设计</span>
+        <span class="signature">v<span id="versionText">1.8.2</span> · ©蛋生品牌设计</span>
       </div>
       <sp-button id="installUpdate" variant="cta" class="primary hidden">下载并安装更新</sp-button>
       <sp-button id="openRelease" variant="secondary" class="release-button hidden">打开发布页</sp-button>
