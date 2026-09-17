@@ -59,16 +59,19 @@ label { color: #cbd3de; font-size: 12px; margin-right: 8px; flex-shrink: 0; }
 .bleed-cell:nth-child(odd) { padding-right: 4px; }
 .bleed-cell:nth-child(even) { padding-left: 4px; }
 .bleed-label { width: 17px; color: #cbd3de; font-size: 12px; flex-shrink: 0; }
-.bleed-input { flex: 1; min-width: 0; height: 36px; display: flex; align-items: center; border: 1px solid #606a79; border-radius: 4px; background: #22252a; padding-left: 6px; box-sizing: border-box; }
-.bleed-input sp-textfield { flex: 1; width: 0; min-width: 0; height: 30px; min-height: 30px; margin: 0; padding: 0; border: none; background: transparent; --spectrum-textfield-border-color: transparent; --spectrum-textfield-background-color: transparent; }
-.bleed-unit { font-size: 10px; color: #aeb9c8; flex-shrink: 0; margin: 0 5px 0 2px; }
-.stepper { display: flex; flex-direction: column; width: 23px; height: 34px; flex-shrink: 0; border-left: 1px solid #4b5360; }
-.step-up, .step-down { display: flex; flex: 1; align-items: center; justify-content: center; background: #363d48; }
-.step-up { border-bottom: 1px solid #4b5360; border-radius: 0 3px 0 0; }
-.step-down { border-radius: 0 0 3px 0; }
-.chevron { display: block; width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; }
-.chevron.up { border-bottom: 4px solid #d9e4f4; }
-.chevron.down { border-top: 4px solid #d9e4f4; }
+.bleed-input { flex: 1; min-width: 0; height: 36px; display: flex; align-items: center; border: 1px solid #606a79; border-radius: 4px; background: #3f4650; box-sizing: border-box; overflow: hidden; }
+/* UXP 的 sp-textfield 是黑盒，内部底色写死成 Spectrum 的 gray-50（#080808 近黑），
+   之前用 --spectrum-textfield-background-color: transparent 盖不掉，真机上就是一块黑。
+   官方文档里 sp-textfield 支持 quiet 变体（无底无框），加上它底色才透得出这层浅灰。 */
+.bleed-input sp-textfield { flex: 1; width: 0; min-width: 0; height: 34px; min-height: 34px; margin: 0; padding: 0; border: none; color: #eef3fa; background: transparent; --spectrum-textfield-border-color: transparent; --spectrum-textfield-background-color: transparent; }
+.bleed-unit { font-size: 10px; color: #d3dae4; flex-shrink: 0; margin: 0 6px 0 2px; }
+/* 步进箭头放在数值**前面**。图标走 PNG —— CSS 的 border 三角在 UXP 里画不出斜接，
+   真机上只剩一条横杠，就是「图标显示不全」的原因。 */
+.stepper { display: flex; flex-direction: column; width: 24px; height: 34px; flex-shrink: 0; border-right: 1px solid #5b6371; }
+.step-up, .step-down { display: flex; flex: 1; align-items: center; justify-content: center; background: #4a5260; }
+.step-up { border-bottom: 1px solid #5b6371; border-radius: 3px 0 0 0; }
+.step-down { border-radius: 0 0 0 3px; }
+.chevron { display: block; width: 10px; height: 6px; flex-shrink: 0; }
 /* 「创建出血线」与左侧状态文字同一条中线：.muted 自带 3px 上边距，这里要抹掉。 */
 .bleed-create-row { display: flex; align-items: center; justify-content: space-between; margin-top: 12px; padding-top: 10px; border-top: 1px solid #424954; }
 .bleed-create-row .muted { margin-top: 0; line-height: 18px; }
@@ -86,6 +89,11 @@ sp-button.compact-button .button-label { font-size: 12px; }
 .bottom-actions { display: flex; flex-direction: row; padding-top: 14px; margin-top: 14px; border-top: 1px solid #424954; }
 sp-button.utility-button { flex: 1; width: 0; min-width: 0; height: 36px; min-height: 36px; padding: 0 6px; }
 sp-button.utility-button:first-child { margin-right: 8px; }
+/* UXP 里的 sp-button 是黑盒，不能指望它内部是横向 flex。
+   不包这一层的话，真机上会出现「图标在上、文字在下」，图标还会顶到按钮上沿被裁掉
+   —— 浏览器预览里看不出来，因为预览页是我们自己把 sp-button 设成 flex 的。
+   所以图标 + 文字统一包进 .button-inner，横排由我们自己说了算。 */
+.button-inner { display: flex; flex-direction: row; align-items: center; justify-content: center; height: 100%; }
 .utility-button .button-label { margin-left: 8px; font-size: 12px; }
 .delete-note { font-size: 10px; margin-top: 7px; }
 /* 垃圾桶：PNG 图标（原尺寸 14×16 缩小 10%）。改尺寸只改这两个数字。 */
