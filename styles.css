@@ -92,16 +92,20 @@ sp-button.utility-button:first-child { margin-right: 8px; }
 .icon-trash { display: block; width: 12.6px; height: 14.4px; flex-shrink: 0; }
 .icon-eye { display: block; width: 16px; height: 16px; flex-shrink: 0; }
 sp-button[disabled] .button-label, sp-button[disabled] .icon-trash, sp-button[disabled] .icon-eye { opacity: 0.45; }
-#status { display: block; margin: 0 0 9px; padding: 6px 9px; font-size: 11px; line-height: 16px; color: #bdd4ef; background: #2a3645; border-radius: 4px; overflow-wrap: break-word; }
+/* 状态条：操作结果反馈。只占一行，太长时强制断词（长 URL 曾把页脚撑变形）。 */
+#status { display: block; margin: 0 0 5px; padding: 4px 8px; font-size: 11px; line-height: 15px; color: #bdd4ef; background: #2a3645; border-radius: 4px; overflow-wrap: break-word; word-break: break-all; }
 #status.error { color: #ffd3c5; background: #46352f; }
 
-/* 更新与版权固定在窗口底部，不被大段空白推走。 */
-.panel-footer { flex-shrink: 0; padding: 10px 16px 9px; border-top: 1px solid #424954; background: #292c31; max-height: 40%; overflow-y: auto; }
-.update-row { display: flex; align-items: center; justify-content: space-between; }
-.update-version { color: #aeb7c4; font-size: 11px; margin-right: 8px; }
-sp-button.update-button { width: 76px; min-width: 76px; height: 26px; min-height: 26px; }
-sp-button.update-button .button-label { font-size: 11px; font-weight: 400; }
-sp-button.primary, sp-button.release-button { width: 100%; height: 34px; min-height: 34px; margin-top: 8px; }
-#updateStatus { font-size: 10px; line-height: 15px; }
+/* 更新与版权固定在窗口底部，压成两行：状态条 +「检查更新 / 版本 · 版权」。
+   页脚每多占 10px，上面的功能区就少 10px，所以这里刻意压得很紧；
+   版本号在标题栏已经出现过，页脚不再单独占一格，直接并进版权行右端。
+   #updateStatus 默认是空的（隐藏），只有检查/安装更新时才多占一行。 */
+.panel-footer { flex-shrink: 0; padding: 6px 16px; border-top: 1px solid #424954; background: #292c31; max-height: 40%; overflow-y: auto; }
+.update-row { display: flex; align-items: center; min-width: 0; }
+sp-button.update-button { width: 72px; min-width: 72px; height: 24px; min-height: 24px; flex-shrink: 0; }
+sp-button.update-button .button-label { font-size: 11px; font-weight: 400; line-height: 16px; }
+.signature { color: #aeb7c4; font-size: 10px; line-height: 16px; flex: 1; min-width: 0; text-align: right; margin-left: 8px; overflow-wrap: break-word; }
+sp-button.primary, sp-button.release-button { width: 100%; height: 30px; min-height: 30px; margin-top: 6px; }
+/* 错误信息里的超长 URL 必须能断行，否则会把整个页脚挤变形。 */
+#updateStatus { font-size: 10px; line-height: 14px; margin-top: 4px; overflow-wrap: break-word; word-break: break-all; }
 .muted.error-text { color: #ffd3c5; }
-.signature { color: #aeb7c4; font-size: 10px; line-height: 16px; text-align: center; margin-top: 7px; }
