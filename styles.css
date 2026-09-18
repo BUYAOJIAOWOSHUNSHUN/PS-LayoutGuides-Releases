@@ -154,8 +154,21 @@ sp-button { display: flex; align-items: center; justify-content: center; text-al
 /* 画布扩展颜色的色块（画布卡，模仿 PS 对话框里下拉右边的颜色预览方块）。
    背景色由 JS 按当前选项写 inline style（前景/背景要跟随文档的 FG/BG 色）。
    v1.9.11 起色块可点：弹出 PS 拾色器（悬停加亮边提示可点）。 */
-.ext-swatch { flex-shrink: 0; margin-left: 5px; width: 22px; height: 18px; box-sizing: border-box; border: 1px solid #5a5a5a; border-radius: 2px; background: #ffffff; cursor: pointer; }
+/* 画布扩展颜色的色块（画布卡，模仿 PS 对话框里下拉右边的颜色预览方块）。
+   背景色由 JS 按当前选项写 inline style（前景/背景要跟随文档的 FG/BG 色）。
+   色块可点（v1.9.11 起本想借 PS 原生拾色器，真机不认；v1.9.13 改弹面板内
+   取色器小面板），悬停加亮边提示可点。外层 wrap 是小面板的定位锚点。 */
+.ext-swatch-wrap { position: relative; flex-shrink: 0; margin-left: 5px; display: flex; }
+.ext-swatch { display: block; width: 22px; height: 18px; box-sizing: border-box; border: 1px solid #5a5a5a; border-radius: 2px; background: #ffffff; cursor: pointer; }
 .ext-swatch:hover { border-color: #8ab4e8; }
+/* 取色器小面板：预设色板两行 + 十六进制输入行。absolute 挂在 wrap 下方右对齐
+   （unit-menu 同款做法，真机可用）。 */
+.ext-popup { position: absolute; top: calc(100% + 4px); right: 0; z-index: 999; background: #2b2b2b; border: 1px solid #5a5a5a; border-radius: 4px; padding: 6px; box-shadow: 0 4px 10px rgba(0,0,0,0.4); }
+.ext-popup-row { display: flex; flex-direction: row; align-items: center; margin-bottom: 4px; }
+.ext-popup-row:last-child { margin-bottom: 0; }
+.ext-popup-swatch { width: 16px; height: 16px; margin-right: 3px; box-sizing: border-box; border: 1px solid #5a5a5a; cursor: pointer; }
+.ext-popup-swatch:hover { border-color: #8ab4e8; }
+sp-textfield.ext-popup-input { width: 96px; flex: 0 0 auto; margin: 0; margin-right: 4px; }
 /* 图片/画布数值框也是真输入控件 sp-textfield（v1.9.6 起，同样为了根治按键透传）。
    原生光标、拖拽选区、宿主按键抑制都是白送的；内部底色是组件写死的深灰（功能优先）。 */
 sp-textfield.size-input { width: 88px; flex: 0 0 auto; margin: 0; }
