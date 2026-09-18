@@ -513,14 +513,13 @@ function refresh(explicit) {
       for (let i = 0; i < SIZE_FIELDS.length; i++) sizeDirty[SIZE_FIELDS[i]] = false;
     }
     const keepUserInput = field => !changed && (sizeDirty[field] || sizeFocus === field);
-    // 图片大小：像素 + 当前文档的分辨率。
-    if (!keepUserInput("imageWidth")) writeSizeValue("imageWidth", Math.round(l.width));
-    if (!keepUserInput("imageHeight")) writeSizeValue("imageHeight", Math.round(l.height));
+    // 图片大小：宽/高按当前单位换算显示，分辨率固定 PPI。
+    if (!keepUserInput("imageWidth")) writeSizeValue("imageWidth", formatUnitValue(l.width, imageUnit, snapshot.resolution));
+    if (!keepUserInput("imageHeight")) writeSizeValue("imageHeight", formatUnitValue(l.height, imageUnit, snapshot.resolution));
     if (!keepUserInput("imageResolution")) writeSizeValue("imageResolution", Math.round(snapshot.resolution));
-    // 画布大小：厘米 + 当前文档的分辨率换算。
-    const cmPerInch = 2.54;
-    if (!keepUserInput("canvasWidth")) writeSizeValue("canvasWidth", Number((l.width / snapshot.resolution * cmPerInch).toFixed(2)));
-    if (!keepUserInput("canvasHeight")) writeSizeValue("canvasHeight", Number((l.height / snapshot.resolution * cmPerInch).toFixed(2)));
+    // 画布大小：宽/高按当前单位换算显示。
+    if (!keepUserInput("canvasWidth")) writeSizeValue("canvasWidth", formatUnitValue(l.width, canvasUnit, snapshot.resolution));
+    if (!keepUserInput("canvasHeight")) writeSizeValue("canvasHeight", formatUnitValue(l.height, canvasUnit, snapshot.resolution));
     el("bleedGuideState").textContent = snapshot.bleedGuideCount ? "已创建 " + snapshot.bleedGuideCount + " 条" : "尚未创建";
     updateBleedPreview();
     if (changed || explicit) {
@@ -543,6 +542,36 @@ function refresh(explicit) {
 // 点「确认修改」才真正调用 resizeImage / resizeCanvas。所以失焦/回车时不做合法性校验，
 // 「确认修改」按钮统一收一遍。
 const SIZE_FIELDS = ["imageWidth", "imageHeight", "imageResolution", "canvasWidth", "canvasHeight"];
+
+/* 长度单位（模仿 PS 新建 / 画布大小对话框）：全部以英寸为桥互相换算。
+   1 点 = 1/72 英寸，1 派卡 = 12 点 = 1/6 英寸。像素单位不随分辨率缩放。 */
+const UNIT_NAMES = { px: "像素", in: "英寸", cm: "厘米", mm: "毫米", pt: "点", pc: "派卡" };
+let imageUnit = "px";   // 图片大小卡的单位（宽度/高度两行共用）
+let canvasUnit = "cm";  // 画布大小卡的单位
+
+function unitToPixels(value, unit, ppi) {
+  if (unit === "px") return value;
+  if (unit === "in") return value * ppi;
+  if (unit === "cm") return value * ppi / 2.54;
+  if (unit === "mm") return value * ppi / 25.4;
+  if (unit === "pt") return value * ppi / 72;
+  return value * ppi / 6;
+}
+
+function pixelsToUnit(px, unit, ppi) {
+  if (unit === "px") return px;
+  if (unit === "in") return px / ppi;
+  if (unit === "cm") return px * 2.54 / ppi;
+  if (unit === "mm") return px * 25.4 / ppi;
+  if (unit === "pt") return px * 72 / ppi;
+  return px * 6 / ppi;
+}
+
+// 显示格式：像素取整，其它单位保留两位小数（和 PS 一致）。
+function formatUnitValue(px, unit, ppi) {
+  const v = pixelsToUnit(px, unit, ppi);
+  return unit === "px" ? String(Math.round(v)) : String(Number(v.toFixed(2)));
+}
 
 // 编辑保护：轮询 refresh() 每 1.2 秒跑一次，会把数值框重写成文档当前值。
 // 真机上用户敲的数字就是这样被冲掉的（「输一个马上还原」就是它）。
@@ -630,8 +659,10 @@ function buildAnchorGrid() {
     for (let col = 0; col < 3; col++) {
       const id = ANCHOR_IDS[row * 3 + col];
       const span = document.createElement("span");
-      span.className = "anchor-cell";
+      // 白色分割线：前两列画右边线、前两行画下边线（edge-r / edge-b），
+      // 存在 data-edge 里，renderAnchor 重建 className 时不能丢。
       span.setAttribute("data-anchor", id);
+      span.setAttribute("data-edge", (col < 2 ? "r" : "") + (row < 2 ? "b" : ""));
       span.setAttribute("role", "radio");
       span.setAttribute("tabindex", "0");
       span.title = ANCHOR_LABEL[id];
@@ -661,6 +692,7 @@ const ANCHOR_LABEL = {
 
 function renderAnchor() {
   // 格子现在包在 3 个 .anchor-row 里（UXP 不支持 CSS Grid，见 buildAnchorGrid）。
+  // className 每次重建，白色分割线（edge-r / edge-b）从 data-edge 里带回来。
   const rows = el("anchorGrid").childNodes;
   for (let r = 0; r < rows.length; r++) {
     const rowEl = rows[r];
@@ -670,7 +702,11 @@ function renderAnchor() {
       const cell = cells[i];
       if (!cell || cell.nodeType !== 1) continue;
       const id = cell.getAttribute("data-anchor");
-      cell.className = id === canvasAnchor ? "anchor-cell active" : "anchor-cell";
+      const edge = cell.getAttribute("data-edge") || "";
+      cell.className = "anchor-cell"
+        + (id === canvasAnchor ? " active" : "")
+        + (edge.indexOf("r") >= 0 ? " edge-r" : "")
+        + (edge.indexOf("b") >= 0 ? " edge-b" : "");
       cell.setAttribute("aria-checked", String(id === canvasAnchor));
     }
   }
@@ -705,20 +741,19 @@ async function applyImageSize() {
   if (service.busy) return;
   const doc = host.active();
   if (!doc) { status("当前没有打开的文档。", true); return; }
-  const widthIn = parsePositive(readSizeValue("imageWidth"));
-  const heightIn = parsePositive(readSizeValue("imageHeight"));
+  const widthValue = parsePositive(readSizeValue("imageWidth"));
+  const heightValue = parsePositive(readSizeValue("imageHeight"));
   const resolution = parsePositive(readSizeValue("imageResolution"));
-  if (widthIn == null || heightIn == null || resolution == null) {
+  if (widthValue == null || heightValue == null || resolution == null) {
     status("图片大小的宽、高、分辨率都必须是大于 0 的数字。", true);
     return;
   }
-  // 锁定时让高度跟随宽度 —— 但反过来写宽从高也可以。这里以「最后改的那一项」为准：
-  // 我们没法精确知道谁最后改，所以两个都按宽推：保留宽，高度按比例重算。
-  let widthPx = Math.round(widthIn);
-  let heightPx = Math.round(heightIn);
+  // 输入值按当前单位换算成像素（宽/高共用一个单位下拉）。
+  let widthPx = Math.round(unitToPixels(widthValue, imageUnit, resolution));
+  let heightPx = Math.round(unitToPixels(heightValue, imageUnit, resolution));
   if (imageLock && aspectRatio > 0) {
     heightPx = Math.round(widthPx / aspectRatio);
-    writeSizeValue("imageHeight", heightPx);
+    writeSizeValue("imageHeight", formatUnitValue(heightPx, imageUnit, resolution));
   }
   disableAll(true);
   status("正在修改图片大小…");
@@ -726,7 +761,7 @@ async function applyImageSize() {
   let message;
   try {
     await host.modal(() => host.resizeImage(doc, widthPx, heightPx, resolution), "修改图片大小");
-    message = "图片大小已修改为 " + widthPx + " × " + heightPx + " 像素 · " + resolution + " PPI。";
+    message = "图片大小已修改为 " + widthPx + " × " + heightPx + " 像素（按" + UNIT_NAMES[imageUnit] + "输入）· " + resolution + " PPI。";
   } catch (error) {
     console.error(error);
     message = "图片大小修改失败：" + errorText(error);
@@ -741,20 +776,20 @@ async function applyCanvasSize() {
   if (service.busy) return;
   const doc = host.active();
   if (!doc) { status("当前没有打开的文档。", true); return; }
-  // 画布宽高按「厘米」输入，转成像素：cm * PPI / 2.54。
+  // 画布宽高按当前单位输入，换算成像素再交给 resizeCanvas。
   // 文档的 PPI 来自上次 refresh() 写入的 lastResolution。
   if (!Number.isFinite(lastResolution) || lastResolution <= 0) {
     status("无法读取文档分辨率，画布大小修改中止。", true);
     return;
   }
-  const widthCm = parsePositive(readSizeValue("canvasWidth"));
-  const heightCm = parsePositive(readSizeValue("canvasHeight"));
-  if (widthCm == null || heightCm == null) {
+  const widthValue = parsePositive(readSizeValue("canvasWidth"));
+  const heightValue = parsePositive(readSizeValue("canvasHeight"));
+  if (widthValue == null || heightValue == null) {
     status("画布大小的宽、高都必须是大于 0 的数字。", true);
     return;
   }
-  const widthPx = Math.round(widthCm * lastResolution / 2.54);
-  const heightPx = Math.round(heightCm * lastResolution / 2.54);
+  const widthPx = Math.round(unitToPixels(widthValue, canvasUnit, lastResolution));
+  const heightPx = Math.round(unitToPixels(heightValue, canvasUnit, lastResolution));
   disableAll(true);
   status("正在修改画布大小…");
   let failed = false;
@@ -762,7 +797,8 @@ async function applyCanvasSize() {
   try {
     await host.modal(() => host.resizeCanvas(doc, widthPx, heightPx, ANCHOR_POSITION[canvasAnchor] || "MIDDLECENTER"),
                      "修改画布大小");
-    message = "画布大小已修改为 " + widthCm.toFixed(2) + " × " + heightCm.toFixed(2) + " 厘米（锚点：" + ANCHOR_LABEL[canvasAnchor] + "）。";
+    message = "画布大小已修改为 " + widthValue + " × " + heightValue + " " + UNIT_NAMES[canvasUnit]
+      + "（锚点：" + ANCHOR_LABEL[canvasAnchor] + "）。";
   } catch (error) {
     console.error(error);
     message = "画布大小修改失败：" + errorText(error);
@@ -781,7 +817,16 @@ async function run(mode) {
   status("正在处理辅助线…");
   let message;
   let failed = false;
-  try { const result = await service.run(mode); message = result.message; failed = !!result.warning; }
+  try { const result = await service.run(mode); message = result.message; failed = !!result.warning;
+    // 删除辅助线 = 全部清空重来：出血值一并归零（老大要求的规则），
+    // 之后点版心线 / LOGO / 背书三个按钮就按 0 出血（画布原边）计算。
+    if (mode === "clear" && !failed) {
+      service.setBleed({ top: 0, bottom: 0, left: 0, right: 0 });
+      renderBleedInputs();
+      updateBleedPreview();
+      message += " 出血值已清零。";
+    }
+  }
   catch (error) {
     console.error(error);
     message = "未完成：" + errorText(error);
@@ -1001,6 +1046,22 @@ function start() {
       // 输入框不直接改状态：失焦/回车只把焦点移走，真正的修改走「确认修改」按钮。
       valueEl.setAttribute("title", "点一下可直接输入数字，双击全选，回车或点「确认修改」生效");
     }
+    // 单位下拉：一张卡一个，控制宽/高两行（真机 = sp-picker 原生下拉；
+    // 预览替身会把 value 放在属性/属性值里，两种读法都兼容）。
+    el("imageUnitPicker").addEventListener("change", event => {
+      imageUnit = event.target.value || event.target.getAttribute("data-value") || "px";
+      el("imageUnitText").textContent = UNIT_NAMES[imageUnit] || "像素";
+      lastSignature = null;   // 单位切换后以文档为准重写换算值
+      refresh(false);
+      status("图片大小单位：" + (UNIT_NAMES[imageUnit] || "像素") + "。");
+    });
+    el("canvasUnitPicker").addEventListener("change", event => {
+      canvasUnit = event.target.value || event.target.getAttribute("data-value") || "cm";
+      el("canvasUnitText").textContent = UNIT_NAMES[canvasUnit] || "厘米";
+      lastSignature = null;
+      refresh(false);
+      status("画布大小单位：" + (UNIT_NAMES[canvasUnit] || "厘米") + "。");
+    });
     el("applyImageSize").addEventListener("click", () => { void applyImageSize(); });
     el("applyImageSize").title = "按当前值修改图片大小（executeAsModal 包成一步）";
     el("applyCanvasSize").addEventListener("click", () => { void applyCanvasSize(); });
