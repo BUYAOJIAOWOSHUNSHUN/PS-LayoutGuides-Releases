@@ -79,13 +79,11 @@ html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
    --spectrum-textfield-background-color 盖不掉、quiet 变体也只去了边框，
    外面套浅灰容器就会变成「灰框里挖了个黑洞」。自绘之后这层灰才真的说了算。
    宽度固定 40px：填「4.8」这种值用不了那么长，也正好把整行压窄。 */
-.bleed-input { display: flex; align-items: center; height: 30px; flex-shrink: 0; border: 1px solid #5a5a5a; border-radius: 4px; background: #3c3c3c; box-sizing: border-box; overflow: hidden; }
-/* 焦点态：自绘控件没有原生焦点框，JS 在聚焦时给容器加 .focused（UXP 不可靠支持 :focus-within）。
-   亮蓝边 + 提亮底色，跟 PS 对话框的输入框一致。 */
-.bleed-input.focused { border-color: #4d8dfd; background: #454545; }
-.bleed-value { display: block; width: 40px; padding: 0 6px; font-size: 12px; line-height: 16px; color: #e8e8e8; text-align: right; white-space: nowrap; overflow: hidden; }
-/* 焦点态：自绘控件没有原生焦点框，自己给一个，否则用户不知道正在编辑哪一格。 */
-.bleed-value:focus { background: transparent; color: #ffffff; }
+/* 出血数值框用真输入控件 sp-textfield（v1.9.6 起）：
+   之前自绘 span 的按键会透传给 PS 本体（打数字 → 图层面板不透明度跟着变），
+   真输入框获得焦点后宿主不再接收按键。容器只负责排版，不再画边框底色。 */
+.bleed-input { display: flex; align-items: center; height: 24px; flex-shrink: 0; }
+sp-textfield.bleed-field { width: 44px; flex: 0 0 auto; margin: 0; }
 .bleed-unit { font-size: 10px; color: #b8b8b8; flex-shrink: 0; padding: 0 6px 0 4px; }
 /* 步进箭头在数值**后面**。图标走 PNG —— CSS 的 border 三角在 UXP 里画不出斜接，
    真机上只剩一条横杠，就是之前「图标显示不全」的原因。 */
@@ -147,16 +145,9 @@ sp-button { display: flex; align-items: center; justify-content: center; text-al
 .unit-option-item:hover { background: #1473e6; color: #ffffff; }
 /* 高度/分辨率行右侧的静态单位文字，宽度和下拉一致。 */
 .size-unit-static { flex-shrink: 0; margin-left: 5px; width: 80px; box-sizing: border-box; text-align: center; font-size: 11px; color: #b8b8b8; }
-.size-value { display: block; width: 88px; flex-shrink: 0; height: 24px; padding: 0 6px; font-size: 12px; line-height: 24px; color: #e8e8e8; text-align: right; background: #3c3c3c; border: 1px solid #5a5a5a; border-radius: 4px; white-space: nowrap; overflow: hidden; box-sizing: border-box; }
-/* 焦点态：亮蓝边框 + 提亮底色（PS 对话框风格）。闪烁光标由 JS 插入 .caret 元素实现。 */
-.size-value:focus { background: #454545; color: #ffffff; border-color: #4d8dfd; }
-/* 闪烁光标：JS 在聚焦时把 1px 竖线插到文本末尾，定时器切换 visibility 模拟闪烁
-   （自绘 span 没有原生光标，UXP 也没有可用的透明文本输入控件）。 */
-.caret { display: inline-block; width: 1px; height: 13px; margin-left: 1px; background: #e8e8e8; }
-.caret.off { visibility: hidden; }
-/* 拖拽全选：数值按字符拆成 .ch，选中区间加蓝底白字（PS 输入框选中风格）。 */
-.ch { display: inline; }
-.ch.sel { background: #1473e6; color: #ffffff; }
+/* 图片/画布数值框也是真输入控件 sp-textfield（v1.9.6 起，同样为了根治按键透传）。
+   原生光标、拖拽选区、宿主按键抑制都是白送的；内部底色是组件写死的深灰（功能优先）。 */
+sp-textfield.size-input { width: 88px; flex: 0 0 auto; margin: 0; }
 /* 单位下拉由 sp-picker 承担（见上）；分辨率行固定 PPI。 */
 /* 确认修改行：右对齐的按钮；margin-top:auto 让它贴卡片底部。 */
 .size-apply-row { display: flex; justify-content: flex-end; align-items: center; padding-top: 8px; margin-top: auto; border-top: 1px solid #454545; }
