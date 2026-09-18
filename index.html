@@ -104,7 +104,10 @@
                    PS 对话框里还有「其它…」会打开 PS 取色器 —— UXP 没有取色器接口，做不了。 -->
               <div class="size-input-row">
                 <div id="canvasExtPicker" class="unit-picker" role="button" tabindex="0" aria-label="画布扩展颜色" data-value="white"></div>
-                <span id="canvasExtSwatch" class="ext-swatch" title="扩展区域的填充颜色"></span>
+                <!-- 色块外面包一层定位容器：取色器小面板（v1.9.13）以它为锚点 absolute 定位。 -->
+                <span id="canvasExtSwatchWrap" class="ext-swatch-wrap">
+                  <span id="canvasExtSwatch" class="ext-swatch" title="点这里选画布扩展颜色（预设色板 / 十六进制）"></span>
+                </span>
               </div>
             </div>
             <div class="size-apply-row">
@@ -215,7 +218,7 @@
         <div class="update-left">
           <sp-button id="checkUpdate" variant="secondary" class="update-button"><span class="button-label">检查更新</span></sp-button>
           <!-- 版本号跟着「检查更新」走：查更新时一眼能对上「本地是什么版本、远端是什么版本」。 -->
-          <span id="footerVersion" class="footer-version">v1.9.12</span>
+          <span id="footerVersion" class="footer-version">v1.9.13</span>
         </div>
         <!-- 更新状态（发现新版本 / 网络错误等）跟在版本号后面；版权名固定最右。
              space-between + 状态行 flex:1：状态显示时贴着版本号，收起时版权自然靠右。 -->
