@@ -48,6 +48,38 @@ function createPhotoshopHost(ps) {
       }
       return { id: guide.id, docId: guide.docId };
     },
+    // 彩色参考线：UXP 的 Guide DOM 对象没有颜色字段，但底层（Action Manager）的
+    // 建线事件支持随线指定 RGB 颜色——「新建参考线」对话框能选颜色就是证据。
+    // 这里走 batchPlay 直接建带色参考线；发现不支持就记住并退回普通建线（只丢颜色不丢功能）。
+    // 建完后用「方向 + 坐标 + 新 ID」在辅助线集合里认领回这条线，归属核验和普通建线一样严。
+    coloredGuidesSupported: true,
+    async addColoredGuide(doc, direction, coordinate, rgb) {
+      if (this.coloredGuidesSupported === false) {
+        return this.addGuide(doc, { direction, coordinate });
+      }
+      const beforeIds = new Set(this.listGuides(doc).map(g => g.id));
+      try {
+        await ps.action.batchPlay([{
+          _obj: "make",
+          new: {
+            _obj: "guide",
+            position: { _unit: "pixelsUnit", _value: coordinate },
+            orientation: { _enum: "orientation", _value: direction },
+            color: { _obj: "RGBColor", red: rgb.r, grain: rgb.g, blue: rgb.b }
+          },
+          _options: { dialogOptions: "dontDisplay" }
+        }], {});
+      } catch (error) {
+        this.coloredGuidesSupported = false;
+        return this.addGuide(doc, { direction, coordinate });
+      }
+      const created = this.listGuides(doc).find(g =>
+        g.direction === direction && Math.abs(g.coordinate - coordinate) <= 0.1 && !beforeIds.has(g.id));
+      if (!created || !Number.isInteger(created.id) || created.docId !== doc.id) {
+        throw new Error("彩色辅助线创建后无法核验归属。");
+      }
+      return { id: created.id, docId: created.docId };
+    },
     async deleteGuide(doc, id) {
       // Resolve again after every deletion; collection indices change.
       for (let i = 0; i < doc.guides.length; i++) {
@@ -93,6 +125,21 @@ function createPhotoshopHost(ps) {
       if (!active() || active().id !== doc.id) throw new Error("活动文档已改变，请重新点击操作。");
       const AnchorPosition = ps.constants.AnchorPosition;
       await doc.resizeCanvas(width, height, AnchorPosition[anchor]);
+    },
+    // 文档颜色模式：Document.mode 在不同 UXP 版本可能返回数字枚举或字符串，
+    // 统一转大写后按关键词归类成 RGB / CMYK / GRAY / 其它原文。
+    getMode(doc) {
+      const raw = String(doc.mode == null ? "" : doc.mode).toUpperCase();
+      if (raw.indexOf("CMYK") >= 0) return "CMYK";
+      if (raw.indexOf("RGB") >= 0) return "RGB";
+      if (raw.indexOf("GRAY") >= 0 || raw.indexOf("BITMAP") >= 0) return "GRAY";
+      return raw || "UNKNOWN";
+    },
+    // 转换文档颜色模式（RGB / CMYK）。枚举表拿不到时直接传字符串兜底。
+    async changeMode(doc, mode) {
+      if (!active() || active().id !== doc.id) throw new Error("活动文档已改变，请重新点击操作。");
+      const table = (ps.constants && ps.constants.ChangeMode) || {};
+      await doc.changeMode(table[mode] || mode);
     }
   };
 }
