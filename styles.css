@@ -152,8 +152,10 @@ sp-button { display: flex; align-items: center; justify-content: center; text-al
 /* 高度/分辨率行右侧的静态单位文字：左对齐紧贴数值框（居中会空出一大截，老大要求）。 */
 .size-unit-static { flex-shrink: 0; margin-left: 5px; width: 80px; box-sizing: border-box; text-align: left; font-size: 11px; color: #b8b8b8; }
 /* 画布扩展颜色的色块（画布卡，模仿 PS 对话框里下拉右边的颜色预览方块）。
-   背景色由 JS 按当前选项写 inline style（前景/背景要跟随文档的 FG/BG 色）。 */
-.ext-swatch { flex-shrink: 0; margin-left: 5px; width: 22px; height: 18px; box-sizing: border-box; border: 1px solid #5a5a5a; border-radius: 2px; background: #ffffff; }
+   背景色由 JS 按当前选项写 inline style（前景/背景要跟随文档的 FG/BG 色）。
+   v1.9.11 起色块可点：弹出 PS 拾色器（悬停加亮边提示可点）。 */
+.ext-swatch { flex-shrink: 0; margin-left: 5px; width: 22px; height: 18px; box-sizing: border-box; border: 1px solid #5a5a5a; border-radius: 2px; background: #ffffff; cursor: pointer; }
+.ext-swatch:hover { border-color: #8ab4e8; }
 /* 图片/画布数值框也是真输入控件 sp-textfield（v1.9.6 起，同样为了根治按键透传）。
    原生光标、拖拽选区、宿主按键抑制都是白送的；内部底色是组件写死的深灰（功能优先）。 */
 sp-textfield.size-input { width: 88px; flex: 0 0 auto; margin: 0; }
