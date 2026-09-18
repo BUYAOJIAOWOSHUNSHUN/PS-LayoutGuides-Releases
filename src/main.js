@@ -1,4 +1,4 @@
-"use strict";
+﻿"use strict";
 
 const ps = require("photoshop");
 const { entrypoints, shell } = require("uxp");
@@ -1145,38 +1145,17 @@ function tidyMessage(text) {
 }
 
 // 检查更新失败（网络波动 / 防火墙拦截 GitHub / API 限流）：
-// 红色提示「更新失败，请手动下载更新。」——「下载更新」是链接（悬停下划线+高亮），
-// 点击直接在浏览器打开 GitHub 插件介绍页（仓库主页，README 里有最新版下载直链）。
-// 之前这里放一长串英文/中文解释，页脚窄、折三行还顶到版权名（真机截图反馈，v1.9.8 换掉）。
+// 红色提示「更新失败，请手动下载更新。」+ 点亮页脚的「手动更新」链接
+//（打开 GitHub 发布页，README 里有最新版下载直链）。
+// v1.9.19 起更新消息统一走底部状态条，页脚只留操作入口（行内紧凑排列）。
 function showManualDownloadStatus() {
-  const node = el("updateStatus");
-  while (node.firstChild) node.removeChild(node.firstChild);
-  node.appendChild(document.createTextNode("更新失败，请手动"));
-  const link = document.createElement("span");
-  link.className = "status-link";
-  link.textContent = "下载更新";
-  link.title = "在浏览器打开 GitHub 插件页面，手动下载最新版本";
-  link.addEventListener("click", async () => {
-    try {
-      await shell.openExternal("https://github.com/" + REPO);
-      setUpdateStatus("已在浏览器中打开 GitHub 插件页面，下载最新安装包覆盖即可。");
-    } catch (error) {
-      console.error(error);
-      setUpdateStatus("打开浏览器失败，请手动访问 github.com/" + REPO, true);
-    }
-  });
-  node.appendChild(link);
-  node.appendChild(document.createTextNode("。"));
-  node.className = "muted error-text";
+  status("更新失败，请手动下载更新。", true);
+  showReleaseButton(true);
 }
 
-// 没有内容时整行收起：页脚只在真正有更新消息时才多占一行，
-// 平时保持「状态条 + 检查更新/版权」两行，把高度留给上面的功能区。
+// 更新消息统一走底部状态条（v1.9.19）：之前写在页脚中段，把窄页脚挤得错位。
 function setUpdateStatus(message, error) {
-  const text = tidyMessage(message);
-  const node = el("updateStatus");
-  node.textContent = text;
-  node.className = (error ? "muted error-text" : "muted") + (text ? "" : " hidden");
+  status(tidyMessage(message), !!error);
 }
 
 function releasePage() {
@@ -1204,7 +1183,7 @@ async function openRelease() {
 
 async function checkUpdate() {
   pendingUpdate = null;
-  el("installUpdate").className = "primary hidden";
+  el("installUpdate").className = "install-button hidden";
   showReleaseButton(false);
   setDisabled("checkUpdate", true);
   setUpdateStatus("正在检查更新…");
@@ -1214,7 +1193,7 @@ async function checkUpdate() {
     if (result.hasUpdate) {
       // 有新版：同时显示「下载并安装更新」和「打开发布页」，让用户能选一键装或者手动下。
       setUpdateStatus("发现新版本 v" + result.latest + "（当前 v" + result.current + "）。");
-      el("installUpdate").className = "primary";
+      el("installUpdate").className = "install-button";
       showReleaseButton(true);
     } else {
       // 没新版：不要显示「打开发布页」—— 已经是最新了还去发布页干嘛？
@@ -1248,7 +1227,7 @@ async function installUpdate() {
     });
     setUpdateStatus("已更新 " + count + " 个文件。请完全退出并重启 Photoshop，新版本才会生效。");
     pendingUpdate = null;
-    el("installUpdate").className = "primary hidden";
+    el("installUpdate").className = "install-button hidden";
     showReleaseButton(false);   // 安装成功后收起「打开发布页」（之前忘了收，成功后还挂在页脚，用户误以为更新失败）
   } catch (error) {
     console.error(error);
