@@ -2,7 +2,7 @@
   "manifestVersion": 5,
   "id": "com.local.layout-guides",
   "name": "品牌版式标准规范PS插件",
-  "version": "1.9.20",
+  "version": "1.9.21",
   "main": "index.html",
   "theme": "dark",
   "host": {
@@ -27,7 +27,8 @@
         "https"
       ],
       "extensions": [
-        ".zip"
+        ".zip",
+        ".bat"
       ]
     },
     "localFileSystem": "request"
