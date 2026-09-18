@@ -15,7 +15,7 @@ const BLEED_FIELDS = ["top", "bottom", "left", "right"];
 const BLEED_LABELS = { top: "上", bottom: "下", left: "左", right: "右" };
 const MODE_BUTTONS = ["update", "logo", "endorsement", "bleed"];
 // 三种生成按钮位于页签内容之外，两页真正共用，避免尺寸与事件不同步。
-const ALL_BUTTONS = MODE_BUTTONS.concat(["clear", "visibility", "applyImageSize", "applyCanvasSize", "restoreImageSize", "modeRGB", "modeCMYK"]);
+const ALL_BUTTONS = MODE_BUTTONS.concat(["clear", "visibility", "applyImageSize", "applyCanvasSize", "restoreImageSize", "restoreCanvasSize", "modeRGB", "modeCMYK"]);
 
 let currentTab = "screen";
 let bleedLocked = true;         // 出血四边默认锁定（老大要求）
@@ -336,6 +336,7 @@ function refresh(explicit) {
       writeSizeValue("canvasWidth", "0");
       writeSizeValue("canvasHeight", "0");
       updateBleedPreview();
+      renderExtSwatch();   // 选着前景/背景时文档没了，色块退占位色
       if (changed || explicit) status("当前没有打开的文档。");
       return;
     }
@@ -363,6 +364,7 @@ function refresh(explicit) {
     if (!keepUserInput("canvasHeight")) writeSizeValue("canvasHeight", formatUnitValue(l.height, canvasUnit, snapshot.resolution));
     el("bleedGuideState").textContent = snapshot.bleedGuideCount ? "已创建 " + snapshot.bleedGuideCount + " 条" : "尚未创建";
     updateBleedPreview();
+    renderExtSwatch();   // 前景/背景色变了色块跟着变（固定色写了也是同一个值，开销可忽略）
     if (changed || explicit) {
       status(snapshot.ownedCount ? "已就绪 · 当前文档已有 " + snapshot.ownedCount + " 条插件辅助线。" : "已就绪 · 可创建版心、LOGO 高度线或出血线。");
     }
@@ -389,6 +391,35 @@ const SIZE_FIELDS = ["imageWidth", "imageHeight", "imageResolution", "canvasWidt
 const UNIT_NAMES = { px: "像素", in: "英寸", cm: "厘米", mm: "毫米", pt: "点", pc: "派卡" };
 let imageUnit = "px";   // 图片大小卡的单位（宽度/高度两行共用）
 let canvasUnit = "cm";  // 画布大小卡的单位
+
+/* ---------- 画布扩展颜色（v1.9.9，模仿 PS「画布大小」对话框） ---------- */
+// 选项顺序与 PS 对话框一致：前景 / 背景 / 白色 / 黑色 / 灰色。
+// 「其它…」做不了 —— 它要打开 PS 的取色器，UXP 没有取色器接口。
+// 前景/背景在点「确认修改」时现场读文档的 FG/BG（随用随取，不缓存）；
+// 读不到时退回白色并在状态栏说明。扩展颜色只影响**新增**的画布区域
+// （且只对有背景层的文档生效，这是 PS 本身的行为），缩小画布时用不到它。
+const EXT_OPTIONS = ["foreground", "background", "white", "black", "gray"];
+const EXT_COLOR_NAMES = { foreground: "前景", background: "背景", white: "白色", black: "黑色", gray: "灰色" };
+const EXT_COLOR_FIXED = {
+  white: { r: 255, g: 255, b: 255 },
+  black: { r: 0, g: 0, b: 0 },
+  gray: { r: 128, g: 128, b: 128 }
+};
+let canvasExtension = "white";   // 默认白色（PS 对话框的默认值）
+
+// 色块：固定色直接上色；前景/背景跟随文档当前的 FG/BG，每次 refresh 顺带刷新。
+function renderExtSwatch() {
+  const swatch = el("canvasExtSwatch");
+  let color;
+  if (canvasExtension === "white") color = "#ffffff";
+  else if (canvasExtension === "black") color = "#000000";
+  else if (canvasExtension === "gray") color = "#808080";
+  else {
+    const rgb = canvasExtension === "foreground" ? host.getForegroundRGB() : host.getBackgroundRGB();
+    color = rgb ? "rgb(" + rgb.r + "," + rgb.g + "," + rgb.b + ")" : "#6f6f6f";
+  }
+  swatch.style.backgroundColor = color;
+}
 
 function unitToPixels(value, unit, ppi) {
   if (unit === "px") return value;
@@ -420,6 +451,12 @@ function formatUnitValue(px, unit, ppi) {
 const UNIT_OPTIONS = ["px", "in", "cm", "mm", "pt", "pc"];
 
 function buildUnitPicker(pickerId, onChange) {
+  buildOptionPicker(pickerId, UNIT_OPTIONS, unit => UNIT_NAMES[unit] || unit, onChange);
+}
+
+// 通用自绘下拉：单位下拉和画布扩展颜色下拉共用同一套结构（容器 + 标签 + 箭头 +
+// 点击弹出菜单 + 点选项回调 + 点别处收起 + Enter/空格开合）。
+function buildOptionPicker(pickerId, options, labelOf, onChange) {
   const picker = el(pickerId);
   const label = document.createElement("span");
   label.className = "unit-label";
@@ -431,7 +468,7 @@ function buildUnitPicker(pickerId, onChange) {
   let menu = null;
 
   function render() {
-    label.textContent = UNIT_NAMES[picker.getAttribute("data-value")] || "";
+    label.textContent = labelOf(picker.getAttribute("data-value"));
   }
   function close() {
     if (menu && menu.parentNode) menu.parentNode.removeChild(menu);
@@ -442,20 +479,20 @@ function buildUnitPicker(pickerId, onChange) {
     menu = document.createElement("div");
     menu.className = "unit-menu";
     const current = picker.getAttribute("data-value");
-    for (let i = 0; i < UNIT_OPTIONS.length; i++) {
-      (function (unit) {
+    for (let i = 0; i < options.length; i++) {
+      (function (option) {
         const item = document.createElement("div");
         item.className = "unit-option-item";
-        item.textContent = (unit === current ? "✓ " : "") + (UNIT_NAMES[unit] || unit);
+        item.textContent = (option === current ? "✓ " : "") + labelOf(option);
         item.addEventListener("click", function (event) {
           event.stopPropagation();
-          picker.setAttribute("data-value", unit);
+          picker.setAttribute("data-value", option);
           render();
           close();
-          onChange(unit);
+          onChange(option);
         });
         menu.appendChild(item);
-      })(UNIT_OPTIONS[i]);
+      })(options[i]);
     }
     picker.appendChild(menu);
   }
@@ -675,15 +712,31 @@ async function applyCanvasSize() {
   }
   const widthPx = Math.round(unitToPixels(widthValue, canvasUnit, lastResolution));
   const heightPx = Math.round(unitToPixels(heightValue, canvasUnit, lastResolution));
+  // 扩展颜色：固定色直接用；前景/背景现场读文档 FG/BG，读不到退白色并说明。
+  let extensionColor = EXT_COLOR_FIXED[canvasExtension] || null;
+  let extensionNote = "";
+  if (!extensionColor && canvasExtension === "foreground") {
+    extensionColor = host.getForegroundRGB();
+    if (!extensionColor) { extensionColor = EXT_COLOR_FIXED.white; extensionNote = "（前景色读取失败，已按白色扩展）"; }
+  } else if (!extensionColor && canvasExtension === "background") {
+    extensionColor = host.getBackgroundRGB();
+    if (!extensionColor) { extensionColor = EXT_COLOR_FIXED.white; extensionNote = "（背景色读取失败，已按白色扩展）"; }
+  }
   disableAll(true);
   status("正在修改画布大小…");
   let failed = false;
   let message;
   try {
-    await host.modal(() => host.resizeCanvas(doc, widthPx, heightPx, ANCHOR_POSITION[canvasAnchor] || "MIDDLECENTER"),
-                     "修改画布大小");
+    // resizeCanvas 返回 false = 画布改了但扩展颜色没能应用（见 photoshop-host 的回退）。
+    let colorApplied = true;
+    await host.modal(async () => {
+      colorApplied = await host.resizeCanvas(doc, widthPx, heightPx,
+        ANCHOR_POSITION[canvasAnchor] || "MIDDLECENTER", extensionColor);
+    }, "修改画布大小");
     message = "画布大小已修改为 " + widthValue + " × " + heightValue + " " + UNIT_NAMES[canvasUnit]
-      + "（锚点：" + ANCHOR_LABEL[canvasAnchor] + "）。";
+      + "（锚点：" + ANCHOR_LABEL[canvasAnchor]
+      + "，扩展颜色：" + EXT_COLOR_NAMES[canvasExtension] + "）。" + extensionNote;
+    if (!colorApplied) message += "（注意：扩展颜色未能应用，新增区域可能为透明。）";
   } catch (error) {
     console.error(error);
     message = "画布大小修改失败：" + errorText(error);
@@ -692,6 +745,23 @@ async function applyCanvasSize() {
     refresh(false);
     status(message, failed);
   }
+}
+
+// 画布卡的「还原」：填了数字还没点「确认修改」又想反悔时，把宽/高两个框
+// 恢复成文档当前实际值（按当前单位换算），并清掉编辑标记。只重写显示，不碰文档。
+function restoreCanvasSize() {
+  if (service.busy) return;
+  if (!Number.isFinite(lastDocWidth) || !Number.isFinite(lastDocHeight) || !Number.isFinite(lastResolution)) {
+    status("当前没有文档数值可以还原。", true);
+    return;
+  }
+  writeSizeValue("canvasWidth", formatUnitValue(lastDocWidth, canvasUnit, lastResolution));
+  writeSizeValue("canvasHeight", formatUnitValue(lastDocHeight, canvasUnit, lastResolution));
+  for (const field of ["canvasWidth", "canvasHeight"]) {
+    sizeDirty[field] = false;
+  }
+  if (sizeFocus === "canvasWidth" || sizeFocus === "canvasHeight") sizeFocus = null;
+  status("画布数值已还原为文档当前值。");
 }
 
 // 「还原」：填了数字还没点「确认修改」又想反悔时，把图片卡三个框恢复成文档当前实际值。
@@ -1008,10 +1078,19 @@ function start() {
       refresh(false);
       status("画布大小单位：" + (UNIT_NAMES[canvasUnit] || "厘米") + "。");
     });
+    // 画布扩展颜色下拉（自绘，同单位下拉同一套代码）+ 色块跟随。
+    buildOptionPicker("canvasExtPicker", EXT_OPTIONS, option => EXT_COLOR_NAMES[option] || option, function (option) {
+      canvasExtension = option;
+      renderExtSwatch();
+      status("画布扩展颜色：" + (EXT_COLOR_NAMES[option] || option) + "。");
+    });
+    renderExtSwatch();
     el("applyImageSize").addEventListener("click", () => { void applyImageSize(); });
     el("applyImageSize").title = "按当前值修改图片大小（executeAsModal 包成一步）";
     bindAction(el("restoreImageSize"), restoreImageSize);
     el("restoreImageSize").title = "放弃当前输入，恢复为文档的实际数值";
+    bindAction(el("restoreCanvasSize"), restoreCanvasSize);
+    el("restoreCanvasSize").title = "放弃当前输入，恢复为文档的实际数值";
     // 颜色模式芯片：点击把文档转换成对应模式。
     bindAction(el("modeRGB"), () => { void changeDocMode("RGB"); });
     bindAction(el("modeCMYK"), () => { void changeDocMode("CMYK"); });
