@@ -114,9 +114,16 @@
       <section id="pagePrint" class="page hidden">
         <div class="section-heading">
           <span class="section-title">出血设置</span>
-          <div class="unit-switch" aria-label="出血单位">
-            <div id="unitMM" class="unit-option active" role="button" tabindex="0">mm</div>
-            <div id="unitCM" class="unit-option" role="button" tabindex="0">cm</div>
+          <!-- 锁定按钮放在单位切换（mm/cm）前面，尺寸与旁边按钮一致（老大要求）。
+               默认锁定：改任意一边，其余三边同步。 -->
+          <div class="heading-controls">
+            <div id="lock" class="lock-button unlocked" role="button" tabindex="0" aria-label="锁定四边同步" aria-pressed="false">
+              <img id="lockIcon" class="icon-lock" src="assets/icon-unlock.png" alt="">
+            </div>
+            <div class="unit-switch" aria-label="出血单位">
+              <div id="unitMM" class="unit-option active" role="button" tabindex="0">mm</div>
+              <div id="unitCM" class="unit-option" role="button" tabindex="0">cm</div>
+            </div>
           </div>
         </div>
         <div class="parameter-card bleed-card">
@@ -127,18 +134,12 @@
                十字排布：上在上、下在下、左/右分居中间行两侧，锁在正中。
                行结构是普通横向 flex，不能用 CSS Grid（UXP 真机不支持）。 -->
           <div class="bleed-grid">
-            <!-- 锁定按钮在出血区右上角（老大要求）。第一行三段式：占位块 + 上格 + 锁，
-                 两侧等宽，「上」保持视觉居中、锁贴最右。 -->
-            <div class="bleed-cross-row bleed-cross-top">
-              <div class="bleed-cross-spacer"></div>
+            <div class="bleed-cross-row bleed-cross-center">
               <div class="bleed-cell">
                 <span class="bleed-label">上</span>
                 <div class="bleed-input">
                   <span id="bleed-top" class="bleed-value" role="textbox" tabindex="0" aria-label="上出血">0</span><div class="stepper"><div id="step-up-top" class="step-up" role="button" tabindex="0" aria-label="上出血增加 1"><img class="chevron" src="assets/chevron-up.png" alt=""></div><div id="step-down-top" class="step-down" role="button" tabindex="0" aria-label="上出血减少 1"><img class="chevron" src="assets/chevron-down.png" alt=""></div></div><span class="bleed-unit" id="unit-top">mm</span>
                 </div>
-              </div>
-              <div id="lock" class="lock-button unlocked" role="button" tabindex="0" aria-label="锁定四边同步" aria-pressed="false">
-                <img id="lockIcon" class="icon-lock" src="assets/icon-unlock.png" alt="">
               </div>
             </div>
             <div class="bleed-cross-row bleed-cross-mid">
@@ -210,7 +211,7 @@
         <div class="update-left">
           <sp-button id="checkUpdate" variant="secondary" class="update-button"><span class="button-label">检查更新</span></sp-button>
           <!-- 版本号跟着「检查更新」走：查更新时一眼能对上「本地是什么版本、远端是什么版本」。 -->
-          <span id="footerVersion" class="footer-version">v1.9.1</span>
+          <span id="footerVersion" class="footer-version">v1.9.2</span>
         </div>
         <!-- 更新状态（发现新版本 / 网络错误等）跟在版本号后面；版权名固定最右。
              space-between + 状态行 flex:1：状态显示时贴着版本号，收起时版权自然靠右。 -->
