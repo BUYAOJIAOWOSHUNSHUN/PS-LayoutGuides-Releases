@@ -15,7 +15,7 @@ const BLEED_FIELDS = ["top", "bottom", "left", "right"];
 const BLEED_LABELS = { top: "上", bottom: "下", left: "左", right: "右" };
 const MODE_BUTTONS = ["update", "logo", "endorsement", "bleed"];
 // 三种生成按钮位于页签内容之外，两页真正共用，避免尺寸与事件不同步。
-const ALL_BUTTONS = MODE_BUTTONS.concat(["clear", "visibility", "applyImageSize", "applyCanvasSize"]);
+const ALL_BUTTONS = MODE_BUTTONS.concat(["clear", "visibility", "applyImageSize", "applyCanvasSize", "restoreImageSize"]);
 
 let currentTab = "screen";
 let bleedLocked = false;
@@ -28,6 +28,8 @@ let timer = null;
 let initialized = false;
 let lastSignature = null;
 let lastResolution = null;
+let lastDocWidth = null;    // 文档当前像素尺寸缓存，给「还原」按钮用
+let lastDocHeight = null;
 let pendingUpdate = null;
 let registered = false;
 
@@ -489,6 +491,8 @@ function refresh(explicit) {
     setDisabled("clear", !snapshot || !(snapshot.ownedCount + snapshot.otherCount));
     if (!snapshot) {
       lastResolution = null;
+      lastDocWidth = null;
+      lastDocHeight = null;
       aspectRatio = 1;
       el("documentName").textContent = "请打开 Photoshop 文档";
       el("dimensions").textContent = "以整个文档画布为基准";
@@ -504,6 +508,8 @@ function refresh(explicit) {
     }
     const l = snapshot.layout;
     lastResolution = snapshot.resolution;
+    lastDocWidth = l.width;
+    lastDocHeight = l.height;
     aspectRatio = l.width / l.height || 1;
     el("documentName").textContent = snapshot.name;
     el("dimensions").textContent = px(l.width) + " × " + px(l.height) + " · " + format(snapshot.resolution) + " PPI";
@@ -809,6 +815,25 @@ async function applyCanvasSize() {
   }
 }
 
+// 「还原」：填了数字还没点「确认修改」又想反悔时，把图片卡三个框恢复成文档当前实际值。
+// 只重写显示，不碰文档；同时清掉这几个框的编辑标记，让轮询刷新恢复正常回写。
+function restoreImageSize() {
+  if (service.busy) return;
+  if (!Number.isFinite(lastDocWidth) || !Number.isFinite(lastDocHeight) || !Number.isFinite(lastResolution)) {
+    status("当前没有文档数值可以还原。", true);
+    return;
+  }
+  writeSizeValue("imageWidth", formatUnitValue(lastDocWidth, imageUnit, lastResolution));
+  writeSizeValue("imageHeight", formatUnitValue(lastDocHeight, imageUnit, lastResolution));
+  writeSizeValue("imageResolution", Math.round(lastResolution));
+  for (const field of ["imageWidth", "imageHeight", "imageResolution"]) {
+    sizeDirty[field] = false;
+    clearSelection(el(field));
+  }
+  if (sizeFocus === "imageWidth" || sizeFocus === "imageHeight" || sizeFocus === "imageResolution") sizeFocus = null;
+  status("已还原为文档当前数值。");
+}
+
 /* ---------- 执行（辅助线） ---------- */
 
 async function run(mode) {
@@ -986,7 +1011,8 @@ async function installUpdate() {
 function start() {
   if (!initialized) {
     // 版本号只出现在标题后面。页脚那个 #versionText 已删掉，避免同一个号显示两遍。
-    el("footerVersion").textContent = VERSION;
+    // 版本号带 v 前缀显示（用户要求：v1.9 这种格式）。
+    el("footerVersion").textContent = "v" + VERSION;
     // 初始不留提示文字：页脚只有点「检查更新」时才展开这一行。
     setUpdateStatus(REPO ? "" : "更新源待配置");
     // 品牌菜单与出血输入依赖图片和输入框组件，单独兜错，
@@ -1064,6 +1090,8 @@ function start() {
     });
     el("applyImageSize").addEventListener("click", () => { void applyImageSize(); });
     el("applyImageSize").title = "按当前值修改图片大小（executeAsModal 包成一步）";
+    bindAction(el("restoreImageSize"), restoreImageSize);
+    el("restoreImageSize").title = "放弃当前输入，恢复为文档的实际数值";
     el("applyCanvasSize").addEventListener("click", () => { void applyCanvasSize(); });
     el("applyCanvasSize").title = "按当前值修改画布大小（executeAsModal 包成一步）";
     el("clear").addEventListener("click", () => { void run("clear"); });
