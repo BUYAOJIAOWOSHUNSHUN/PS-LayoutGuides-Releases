@@ -122,6 +122,15 @@ async function writeInto(root, path, content) {
 
 /* ---------- 目标目录（记住用户选过一次的位置） ---------- */
 
+// 把文本写进插件的数据目录（那里一定可写）。一键修复权限的脚本就写在这里。
+// 返回写入的文件 Entry（nativePath 可交给 shell.openPath 打开）。
+async function writeDataFile(name, text) {
+  const folder = await fs.getDataFolder();
+  const file = await folder.createFile(name, { overwrite: true });
+  await file.write(text);
+  return file;
+}
+
 async function readToken() {
   try {
     const folder = await fs.getDataFolder();
@@ -200,5 +209,5 @@ async function install(repo, ref, subdir, targetFolder, onProgress) {
 
 module.exports = {
   compareVersions, normalizeVersion,
-  check, install, resolveTarget, chooseTarget
+  check, install, resolveTarget, chooseTarget, writeDataFile
 };
