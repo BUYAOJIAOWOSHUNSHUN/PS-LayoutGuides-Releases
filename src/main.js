@@ -438,6 +438,7 @@ let extPopup = null;
 let extHue = 0;              // 取色器当前色相（0-359）
 let extSV = { s: 1, v: 1 };  // 取色器当前饱和度 / 明度
 let extSvSquare = null;      // SV 方块元素（切色相时要更新渐变底色）
+let extHexField = null;      // 十六进制输入框（SV/色相选色后要同步回它，v1.9.18）
 
 function hexToRgb(hex) {
   const m = /^#?([0-9a-fA-F]{6})$/.exec(String(hex || "").trim());
@@ -479,6 +480,7 @@ function closeExtPopup() {
   if (extPopup && extPopup.parentNode) extPopup.parentNode.removeChild(extPopup);
   extPopup = null;
   extSvSquare = null;
+  extHexField = null;
 }
 
 function applyCustomExtColor(rgb, keepOpen) {
@@ -486,6 +488,10 @@ function applyCustomExtColor(rgb, keepOpen) {
   canvasCustomColor = rgb;
   extPickerApi.set("other");
   renderExtSwatch();
+  // 十六进制框实时跟随当前颜色（v1.9.18 修「点应用又变回白色」）：之前框里留的是
+  // 打开面板时的旧值——比如先点过某个色板，之后 SV 区选的新颜色没同步进去，
+  // 点「应用」就被旧值打回去了（老大诊断成「下面的色板干扰了上面的点选」）。
+  if (extHexField) extHexField.value = "#" + rgbToHex(rgb);
   if (!keepOpen) closeExtPopup();
   status("画布扩展颜色：自定 #" + rgbToHex(rgb) + "。");
 }
@@ -604,7 +610,12 @@ function toggleExtPopup() {
     event.stopPropagation();
   });
   field.addEventListener("click", function (event) { event.stopPropagation(); });
-  hexRow.appendChild(field);
+  // 十六进制框也套浅灰衬底（v1.9.18，老大反馈小面板里的框还是黑底），
+  // 与主面板数值框同一套 .field-wrap 方案，宽度 96px。
+  const hexWrap = document.createElement("span");
+  hexWrap.className = "field-wrap field-wrap-hex";
+  hexWrap.appendChild(field);
+  hexRow.appendChild(hexWrap);
   hexRow.appendChild(apply);
   extPopup.appendChild(hexRow);
   wrap.appendChild(extPopup);
@@ -612,6 +623,7 @@ function toggleExtPopup() {
   placeSvMarker();
   placeHueMarker();
   // 起始十六进制值在 append 之后再赋（预览的替身组件 append 时才升级，提前赋会被吞）。
+  extHexField = field;
   const start = effectiveExtColor();
   field.value = start ? "#" + rgbToHex(start) : "#FFFFFF";
 }
