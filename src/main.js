@@ -624,6 +624,7 @@ function toggleExtPopup() {
   const hexWrap = document.createElement("span");
   hexWrap.className = "field-wrap field-wrap-hex";
   hexWrap.appendChild(field);
+  field.style.opacity = "0.45";
   hexRow.appendChild(hexWrap);
   hexRow.appendChild(apply);
   extPopup.appendChild(hexRow);
@@ -1396,6 +1397,8 @@ function start() {
       wrap.className = "field-wrap";
       fieldEl.parentNode.insertBefore(wrap, fieldEl);
       wrap.appendChild(fieldEl);
+      // 内联透明度做双保险：真机上 .field-wrap > sp-textfield 的子选择器可能没匹配上。
+      fieldEl.style.opacity = "0.45";
     }
     el("applyImageSize").addEventListener("click", () => { void applyImageSize(); });
     el("applyImageSize").title = "按当前值修改图片大小（executeAsModal 包成一步）";
