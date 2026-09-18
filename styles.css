@@ -17,11 +17,12 @@ html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
 /* 版本号现在显示在页脚「检查更新」旁边（.footer-version），标题后不再重复。 */
 .footer-version { color: #a2a2a2; font-size: 10px; line-height: 24px; flex-shrink: 0; margin-left: 8px; }
 
-/* 状态条（操作反馈）：v1.9.14 起从标题行挪到面板底部空白区、贴页脚上方（老大要求）。
-   常驻一条、靠下对齐；max-height 兜住超长错误（长 URL 曾把整块撑变形），超高内部滚动。 */
-.status-strip { flex-shrink: 0; padding: 0 14px 8px; }
-#status { min-width: 0; padding: 4px 8px; font-size: 11px; line-height: 15px; color: #cfcfcf; background: #333333; border-radius: 4px; overflow-wrap: break-word; word-break: break-all; max-height: 31px; overflow-y: auto; }
-#status.error { color: #ffb4a0; background: #3d2b26; }
+/* 状态条（操作反馈）：v1.9.14 起从标题行挪到面板底部空白区、贴页脚上方。
+   v1.9.15 按老大要求微调：与页脚之间不留空、去灰色底、文字改蓝色；
+   max-height 兜住超长错误（长 URL 曾把整块撑变形），超高内部滚动。 */
+.status-strip { flex-shrink: 0; padding: 0 14px; }
+#status { min-width: 0; padding: 4px 0 2px; font-size: 11px; line-height: 15px; color: #6fa8ea; background: transparent; overflow-wrap: break-word; word-break: break-all; max-height: 34px; overflow-y: auto; }
+#status.error { color: #ffb4a0; }
 
 /* 品牌图形统一按同一宽度对齐（高度写在 brands.js），图形与文字之间只留 5px。 */
 .brand-block { margin-bottom: 9px; }
@@ -161,11 +162,15 @@ sp-button { display: flex; align-items: center; justify-content: center; text-al
 .ext-swatch-wrap { position: relative; flex-shrink: 0; margin-left: 5px; display: flex; }
 .ext-swatch { display: block; width: 22px; height: 18px; box-sizing: border-box; border: 1px solid #5a5a5a; border-radius: 2px; background: #ffffff; cursor: pointer; }
 .ext-swatch:hover { border-color: #8ab4e8; }
-/* 取色器小面板：预设色板两行 + 十六进制输入行。absolute 挂在 wrap 下方右对齐
-   （unit-menu 同款做法，真机可用）。 */
+/* 取色器小面板：SV 选色区 + 色相条 + 预设色板 + 十六进制输入行。absolute 挂在
+   wrap 下方右对齐（unit-menu 同款做法，真机可用）。SV 区两层渐变叠出
+   「白→纯色横向 × 透明→黑纵向」的 PS 式选色面，点击取色（v1.9.15）。 */
 .ext-popup { position: absolute; top: calc(100% + 4px); right: 0; z-index: 999; background: #2b2b2b; border: 1px solid #5a5a5a; border-radius: 4px; padding: 6px; box-shadow: 0 4px 10px rgba(0,0,0,0.4); }
 .ext-popup-row { display: flex; flex-direction: row; align-items: center; margin-bottom: 4px; }
 .ext-popup-row:last-child { margin-bottom: 0; }
+.ext-popup-sv { position: relative; width: 142px; height: 108px; margin-right: 5px; box-sizing: border-box; border: 1px solid #5a5a5a; cursor: crosshair; }
+.ext-popup-sv-fill { width: 100%; height: 100%; background: linear-gradient(to top, #000000, rgba(0,0,0,0)); }
+.ext-popup-hue { width: 14px; height: 108px; box-sizing: border-box; border: 1px solid #5a5a5a; cursor: pointer; background: linear-gradient(to bottom, #ff0000 0%, #ffff00 17%, #00ff00 33%, #00ffff 50%, #0000ff 67%, #ff00ff 83%, #ff0000 100%); }
 .ext-popup-swatch { width: 16px; height: 16px; margin-right: 3px; box-sizing: border-box; border: 1px solid #5a5a5a; cursor: pointer; }
 .ext-popup-swatch:hover { border-color: #8ab4e8; }
 sp-textfield.ext-popup-input { width: 96px; flex: 0 0 auto; margin: 0; margin-right: 4px; }
