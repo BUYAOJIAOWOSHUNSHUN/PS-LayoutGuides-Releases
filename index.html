@@ -45,17 +45,11 @@
             </div>
             <div class="size-field">
               <span class="size-field-label">宽度</span>
-              <div class="size-input-row">
-                <span id="imageWidth" class="size-value" role="textbox" tabindex="0" aria-label="图片宽度">0</span>
-                <sp-picker id="imageUnitPicker" class="unit-picker" aria-label="图片大小单位">
-                  <sp-menu-item value="px" selected>像素</sp-menu-item>
-                  <sp-menu-item value="in">英寸</sp-menu-item>
-                  <sp-menu-item value="cm">厘米</sp-menu-item>
-                  <sp-menu-item value="mm">毫米</sp-menu-item>
-                  <sp-menu-item value="pt">点</sp-menu-item>
-                  <sp-menu-item value="pc">派卡</sp-menu-item>
-                </sp-picker>
-              </div>
+                <div class="size-input-row">
+                  <span id="imageWidth" class="size-value" role="textbox" tabindex="0" aria-label="图片宽度">0</span>
+                  <!-- 单位下拉是自绘的（div + JS 菜单）：sp-picker 真机事件不可控（菜单能弹但选项选不上），自绘行为完全可控。 -->
+                  <div id="imageUnitPicker" class="unit-picker" role="button" tabindex="0" aria-label="图片大小单位" data-value="px"></div>
+                </div>
             </div>
             <div class="size-field">
               <span class="size-field-label">高度</span>
@@ -85,17 +79,10 @@
             </div>
             <div class="size-field">
               <span class="size-field-label">宽度</span>
-              <div class="size-input-row">
-                <span id="canvasWidth" class="size-value" role="textbox" tabindex="0" aria-label="画布宽度">0</span>
-                <sp-picker id="canvasUnitPicker" class="unit-picker" aria-label="画布大小单位">
-                  <sp-menu-item value="px">像素</sp-menu-item>
-                  <sp-menu-item value="in">英寸</sp-menu-item>
-                  <sp-menu-item value="cm" selected>厘米</sp-menu-item>
-                  <sp-menu-item value="mm">毫米</sp-menu-item>
-                  <sp-menu-item value="pt">点</sp-menu-item>
-                  <sp-menu-item value="pc">派卡</sp-menu-item>
-                </sp-picker>
-              </div>
+                <div class="size-input-row">
+                  <span id="canvasWidth" class="size-value" role="textbox" tabindex="0" aria-label="画布宽度">0</span>
+                  <div id="canvasUnitPicker" class="unit-picker" role="button" tabindex="0" aria-label="画布大小单位" data-value="cm"></div>
+                </div>
             </div>
             <div class="size-field">
               <span class="size-field-label">高度</span>
@@ -211,7 +198,7 @@
         <div class="update-left">
           <sp-button id="checkUpdate" variant="secondary" class="update-button"><span class="button-label">检查更新</span></sp-button>
           <!-- 版本号跟着「检查更新」走：查更新时一眼能对上「本地是什么版本、远端是什么版本」。 -->
-          <span id="footerVersion" class="footer-version">v1.9.2</span>
+          <span id="footerVersion" class="footer-version">v1.9.3</span>
         </div>
         <!-- 更新状态（发现新版本 / 网络错误等）跟在版本号后面；版权名固定最右。
              space-between + 状态行 flex:1：状态显示时贴着版本号，收起时版权自然靠右。 -->
