@@ -148,8 +148,10 @@ sp-button { display: flex; align-items: center; justify-content: center; text-al
 .unit-picker:hover { border-color: #6f6f6f; }
 .unit-chevron { font-size: 9px; color: #b8b8b8; }
 .unit-menu { position: absolute; top: calc(100% + 2px); left: 0; min-width: 100%; width: max-content; background: #2b2b2b; border: 1px solid #5a5a5a; border-radius: 4px; z-index: 999; padding: 2px 0; box-shadow: 0 4px 10px rgba(0,0,0,0.4); }
-.unit-option-item { padding: 4px 12px; font-size: 11px; color: #e8e8e8; white-space: nowrap; cursor: pointer; }
+.unit-option-item { display: flex; align-items: center; height: 22px; padding: 0 10px; font-size: 11px; color: #e8e8e8; white-space: nowrap; cursor: pointer; }
 .unit-option-item:hover { background: #1473e6; color: #ffffff; }
+/* 下拉分割线（v1.9.16）：对齐 PS 下拉的设计 —— 自定入口（「其它」）与固定项之间隔一条横线。 */
+.unit-divider { flex-shrink: 0; height: 1px; margin: 3px 0; background: #5a5a5a; }
 /* 高度/分辨率行右侧的静态单位文字：左对齐紧贴数值框（居中会空出一大截，老大要求）。 */
 .size-unit-static { flex-shrink: 0; margin-left: 5px; width: 80px; box-sizing: border-box; text-align: left; font-size: 11px; color: #b8b8b8; }
 /* 画布扩展颜色的色块（画布卡，模仿 PS 对话框里下拉右边的颜色预览方块）。
@@ -160,7 +162,8 @@ sp-button { display: flex; align-items: center; justify-content: center; text-al
    色块可点（v1.9.11 起本想借 PS 原生拾色器，真机不认；v1.9.13 改弹面板内
    取色器小面板），悬停加亮边提示可点。外层 wrap 是小面板的定位锚点。 */
 .ext-swatch-wrap { position: relative; flex-shrink: 0; margin-left: 5px; display: flex; }
-.ext-swatch { display: block; width: 22px; height: 18px; box-sizing: border-box; border: 1px solid #5a5a5a; border-radius: 2px; background: #ffffff; cursor: pointer; }
+/* 色块加大一号（v1.9.16，老大反馈图标小）。 */
+.ext-swatch { display: block; width: 26px; height: 22px; box-sizing: border-box; border: 1px solid #5a5a5a; border-radius: 2px; background: #ffffff; cursor: pointer; }
 .ext-swatch:hover { border-color: #8ab4e8; }
 /* 取色器小面板：SV 选色区 + 色相条 + 预设色板 + 十六进制输入行。absolute 挂在
    wrap 下方右对齐（unit-menu 同款做法，真机可用）。SV 区两层渐变叠出
@@ -170,10 +173,25 @@ sp-button { display: flex; align-items: center; justify-content: center; text-al
 .ext-popup-row:last-child { margin-bottom: 0; }
 .ext-popup-sv { position: relative; width: 142px; height: 108px; margin-right: 5px; box-sizing: border-box; border: 1px solid #5a5a5a; cursor: crosshair; }
 .ext-popup-sv-fill { width: 100%; height: 100%; background: linear-gradient(to top, #000000, rgba(0,0,0,0)); }
-.ext-popup-hue { width: 14px; height: 108px; box-sizing: border-box; border: 1px solid #5a5a5a; cursor: pointer; background: linear-gradient(to bottom, #ff0000 0%, #ffff00 17%, #00ff00 33%, #00ffff 50%, #0000ff 67%, #ff00ff 83%, #ff0000 100%); }
+/* 位置标识（v1.9.16）：白边小方环标当前选中的 s/v 点；色相条上白色横杠标当前色相。
+   注意 border-radius 在真机不稳（v1.9.8 教训），环用方框不用圆。 */
+.ext-popup-sv-marker { position: absolute; width: 12px; height: 12px; border: 2px solid #ffffff; box-sizing: border-box; }
+.ext-popup-hue { position: relative; width: 14px; height: 108px; box-sizing: border-box; border: 1px solid #5a5a5a; cursor: pointer; background: linear-gradient(to bottom, #ff0000 0%, #ffff00 17%, #00ff00 33%, #00ffff 50%, #0000ff 67%, #ff00ff 83%, #ff0000 100%); }
+.ext-popup-hue-marker { position: absolute; left: -3px; right: -3px; height: 3px; background: #ffffff; border: 1px solid #000000; box-sizing: border-box; }
 .ext-popup-swatch { width: 16px; height: 16px; margin-right: 3px; box-sizing: border-box; border: 1px solid #5a5a5a; cursor: pointer; }
 .ext-popup-swatch:hover { border-color: #8ab4e8; }
 sp-textfield.ext-popup-input { width: 96px; flex: 0 0 auto; margin: 0; margin-right: 4px; }
+/* 「应用」按钮缩小（v1.9.16，老大反馈）；auto 外边距显式归零防它被推到行尾。 */
+sp-button.ext-popup-apply { min-width: 0; height: 22px; padding: 0 10px; margin: 0; flex: 0 0 auto; }
+sp-button.ext-popup-apply .button-label { font-size: 11px; }
+/* 输入框底色调浅（v1.9.16，老大反馈太黑）：先把组件主题整体调到 dark
+   （manifest theme），再补一组 Spectrum 变量覆盖；变量若不被这版 UXP 认就维持
+   dark 主题的底色，不再更深。 */
+sp-textfield.size-input, sp-textfield.ext-popup-input {
+  --spectrum-textfield-m-background-color: #3c3c3c;
+  --mod-textfield-background-color: #3c3c3c;
+  --spectrum-alias-input-background-color: #3c3c3c;
+}
 /* 图片/画布数值框也是真输入控件 sp-textfield（v1.9.6 起，同样为了根治按键透传）。
    原生光标、拖拽选区、宿主按键抑制都是白送的；内部底色是组件写死的深灰（功能优先）。 */
 sp-textfield.size-input { width: 88px; flex: 0 0 auto; margin: 0; }
@@ -202,9 +220,14 @@ sp-textfield.size-input { width: 88px; flex: 0 0 auto; margin: 0; }
 .anchor-cell:hover { background: #4a4a4a; }
 .anchor-cell.active { background: #1473e6; }
 .guide-section { margin-top: 10px; }
-.guide-actions { display: flex; flex-direction: column; }
-sp-button.guide-button { width: 100%; min-width: 0; height: 36px; min-height: 36px; margin-top: 8px; }
-sp-button.guide-button:first-child { margin-top: 0; }
+/* 生成辅助线行（v1.9.16 改为并列一行，老大要求）：版心线与下面「删除辅助线」
+   按钮完全等宽（都是内容宽的一半减 4px —— 下方两按钮各 flex:1 中隔 8px），
+   LOGO 高度线 / 背书高度线平分剩余宽度。两个页签共用这一组，改一处两边生效。 */
+.guide-actions { display: flex; flex-direction: row; align-items: stretch; }
+sp-button.guide-button { min-width: 0; height: 36px; min-height: 36px; }
+sp-button.guide-button.main-guide { width: calc(50% - 4px); flex-shrink: 0; margin-right: 8px; }
+sp-button.guide-button.sub-guide { width: calc(25% - 6px); flex-shrink: 0; }
+sp-button.guide-button.sub-guide:nth-child(2) { margin-right: 8px; }
 /* margin 显式清零：UXP 给 sp-button 内置 auto 外边距（预览的 Chrome 没有），
    定宽按钮在 flex 行里会被 auto margin 推离预定位置，真机上「确认修改」
    就是不这样才没贴住右边（与 .update-button 同一个坑）。 */
