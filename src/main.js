@@ -393,32 +393,71 @@ let imageUnit = "px";   // 图片大小卡的单位（宽度/高度两行共用�
 let canvasUnit = "cm";  // 画布大小卡的单位
 
 /* ---------- 画布扩展颜色（v1.9.9，模仿 PS「画布大小」对话框） ---------- */
-// 选项顺序与 PS 对话框一致：前景 / 背景 / 白色 / 黑色 / 灰色。
-// 「其它…」做不了 —— 它要打开 PS 的取色器，UXP 没有取色器接口。
+// 选项顺序与 PS 对话框一致：前景 / 背景 / 白色 / 黑色 / 灰色 / 其它。
+// 「其它」走 PS 自带拾色器（v1.9.11）：点色块或选「其它」都会弹窗，
+// 选中的颜色记进 canvasCustomColor，选项自动停在「其它」上。
 // 前景/背景在点「确认修改」时现场读文档的 FG/BG（随用随取，不缓存）；
 // 读不到时退回白色并在状态栏说明。扩展颜色只影响**新增**的画布区域
 // （且只对有背景层的文档生效，这是 PS 本身的行为），缩小画布时用不到它。
-const EXT_OPTIONS = ["foreground", "background", "white", "black", "gray"];
-const EXT_COLOR_NAMES = { foreground: "前景", background: "背景", white: "白色", black: "黑色", gray: "灰色" };
+const EXT_OPTIONS = ["foreground", "background", "white", "black", "gray", "other"];
+const EXT_COLOR_NAMES = { foreground: "前景", background: "背景", white: "白色", black: "黑色", gray: "灰色", other: "其它" };
 const EXT_COLOR_FIXED = {
   white: { r: 255, g: 255, b: 255 },
   black: { r: 0, g: 0, b: 0 },
   gray: { r: 128, g: 128, b: 128 }
 };
 let canvasExtension = "white";   // 默认白色（PS 对话框的默认值）
+let canvasCustomColor = null;    // 「其它」的自定颜色（拾色器选出来的 RGB）
+let extPickerApi = null;         // 扩展颜色下拉的 set 接口（buildOptionPicker 返回）
 
-// 色块：固定色直接上色；前景/背景跟随文档当前的 FG/BG，每次 refresh 顺带刷新。
+// 当前扩展颜色的「有效 RGB」：固定色直接给；前景/背景读文档；其它读自定色。
+function effectiveExtColor() {
+  if (canvasExtension === "white") return EXT_COLOR_FIXED.white;
+  if (canvasExtension === "black") return EXT_COLOR_FIXED.black;
+  if (canvasExtension === "gray") return EXT_COLOR_FIXED.gray;
+  if (canvasExtension === "foreground") return host.getForegroundRGB() || EXT_COLOR_FIXED.white;
+  if (canvasExtension === "background") return host.getBackgroundRGB() || EXT_COLOR_FIXED.white;
+  return canvasCustomColor || EXT_COLOR_FIXED.white;
+}
+
+// 色块：固定色直接上色；前景/背景跟随文档当前的 FG/BG，其它跟随自定色，每次 refresh 顺带刷新。
 function renderExtSwatch() {
   const swatch = el("canvasExtSwatch");
-  let color;
-  if (canvasExtension === "white") color = "#ffffff";
-  else if (canvasExtension === "black") color = "#000000";
-  else if (canvasExtension === "gray") color = "#808080";
-  else {
-    const rgb = canvasExtension === "foreground" ? host.getForegroundRGB() : host.getBackgroundRGB();
-    color = rgb ? "rgb(" + rgb.r + "," + rgb.g + "," + rgb.b + ")" : "#6f6f6f";
+  const rgb = effectiveExtColor();
+  swatch.style.backgroundColor = rgb ? "rgb(" + rgb.r + "," + rgb.g + "," + rgb.b + ")" : "#6f6f6f";
+}
+
+// 弹 PS 拾色器（色块点击 / 选「其它」都走这里）：
+// 以当前有效颜色为起点；确定 → 记为自定色、选项切到「其它」、色块跟随；
+// 取消 → 什么都不变（若是选「其它」引起的，选项回拨到原来的值）。
+async function openExtColorPicker(previousOption) {
+  const start = effectiveExtColor();
+  disableAll(true);
+  status("正在打开 Photoshop 拾色器…");
+  let picked = null;
+  try {
+    picked = await host.showColorPicker(start);
+  } catch (error) {
+    console.error(error);
+    picked = null;
+  } finally {
+    disableAll(false);
+    refresh(false);   // 无文档时按钮该禁用的要回到禁用态（disableAll(false) 会全开）
   }
-  swatch.style.backgroundColor = color;
+  if (!picked) {
+    if (previousOption) {
+      canvasExtension = previousOption;
+      extPickerApi.set(previousOption);
+    }
+    renderExtSwatch();
+    status(previousOption ? "已取消，画布扩展颜色保持不变。" : "拾色器不可用（当前 Photoshop 不支持）。");
+    return;
+  }
+  canvasExtension = "other";
+  canvasCustomColor = picked;
+  extPickerApi.set("other");
+  renderExtSwatch();
+  status("画布扩展颜色：自定 rgb(" + picked.r + ", " + picked.g + ", " + picked.b + ")。");
 }
 
 function unitToPixels(value, unit, ppi) {
@@ -508,6 +547,13 @@ function buildOptionPicker(pickerId, options, labelOf, onChange) {
   // 点面板其它地方收起菜单（UXP 支持 document 级监听）。
   document.addEventListener("click", function () { close(); });
   render();
+  // 程序化改值（例如「其它」取消时回拨选项），标签同步重绘。
+  return {
+    set(value) {
+      picker.setAttribute("data-value", value);
+      render();
+    }
+  };
 }
 
 // 编辑保护：轮询 refresh() 每 1.2 秒跑一次，会把数值框重写成文档当前值。
@@ -712,8 +758,9 @@ async function applyCanvasSize() {
   }
   const widthPx = Math.round(unitToPixels(widthValue, canvasUnit, lastResolution));
   const heightPx = Math.round(unitToPixels(heightValue, canvasUnit, lastResolution));
-  // 扩展颜色：固定色直接用；前景/背景现场读文档 FG/BG，读不到退白色并说明。
-  let extensionColor = EXT_COLOR_FIXED[canvasExtension] || null;
+  // 扩展颜色：固定色直接用；前景/背景现场读文档 FG/BG，其它用拾色器选的自定色，
+  // 都拿不到退白色并说明。
+  let extensionColor = EXT_COLOR_FIXED[canvasExtension] || (canvasExtension === "other" ? canvasCustomColor : null);
   let extensionNote = "";
   if (!extensionColor && canvasExtension === "foreground") {
     extensionColor = host.getForegroundRGB();
@@ -721,6 +768,9 @@ async function applyCanvasSize() {
   } else if (!extensionColor && canvasExtension === "background") {
     extensionColor = host.getBackgroundRGB();
     if (!extensionColor) { extensionColor = EXT_COLOR_FIXED.white; extensionNote = "（背景色读取失败，已按白色扩展）"; }
+  } else if (!extensionColor && canvasExtension === "other") {
+    extensionColor = EXT_COLOR_FIXED.white;
+    extensionNote = "（自定颜色读取失败，已按白色扩展）";
   }
   disableAll(true);
   status("正在修改画布大小…");
@@ -1079,12 +1129,20 @@ function start() {
       status("画布大小单位：" + (UNIT_NAMES[canvasUnit] || "厘米") + "。");
     });
     // 画布扩展颜色下拉（自绘，同单位下拉同一套代码）+ 色块跟随。
-    buildOptionPicker("canvasExtPicker", EXT_OPTIONS, option => EXT_COLOR_NAMES[option] || option, function (option) {
+    // 选「其它」：已有自定色就直接切过去；没有则当场弹 PS 拾色器，取消则回拨选项。
+    extPickerApi = buildOptionPicker("canvasExtPicker", EXT_OPTIONS, option => EXT_COLOR_NAMES[option] || option, function (option) {
+      if (option === "other" && !canvasCustomColor) {
+        void openExtColorPicker(canvasExtension);
+        return;
+      }
       canvasExtension = option;
       renderExtSwatch();
       status("画布扩展颜色：" + (EXT_COLOR_NAMES[option] || option) + "。");
     });
     renderExtSwatch();
+    // 色块可点：以当前颜色为起点弹 PS 拾色器，确定后选项自动切到「其它」。
+    bindAction(el("canvasExtSwatch"), () => { void openExtColorPicker(null); });
+    el("canvasExtSwatch").title = "点这里打开 Photoshop 拾色器，自选画布扩展颜色";
     el("applyImageSize").addEventListener("click", () => { void applyImageSize(); });
     el("applyImageSize").title = "按当前值修改图片大小（executeAsModal 包成一步）";
     bindAction(el("restoreImageSize"), restoreImageSize);
