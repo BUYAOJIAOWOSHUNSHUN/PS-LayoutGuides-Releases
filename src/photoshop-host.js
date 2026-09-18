@@ -152,148 +152,6 @@ function createPhotoshopHost(ps) {
       }
       return false;
     },
-    // 出血线整组通道（v1.9.11 新增）：走 PS 自家「新建参考线版面」的 AM 事件
-    // （newGuideLayout），把四条出血线当作四条**边距参考线**一次建完，并带上
-    // guidesColor 颜色键 —— 这是官方术语表里登记过的 stringID，而且「新建参考线
-    // 版面」对话框在真机上确实能建出带色参考线，是唯一有实证的彩色建线通道。
-    // targets 是**画布绝对坐标**（未做标尺原点换算的 canvasTargets），顺序与
-    // bleedIndices 对齐；origin 是文档标尺原点（建线认领时 DOM 报的是原点相对坐标）。
-    // 返回与 targets 对齐的 {id, docId} 数组，任何一条没建成
-    // （典型：出血 0 的边，PS 对边距 0 可能不建线）或调用报错 → 返回 null，
-    // 由 guide-service 整组退回逐条建线。
-    async addBleedGuidesGroup(doc, targets, rgb, origin) {
-      if (!targets || !targets.length) return null;
-      const ox = origin && Number.isFinite(origin.x) ? origin.x : 0;
-      const oy = origin && Number.isFinite(origin.y) ? origin.y : 0;
-      const beforeIds = new Set(this.listGuides(doc).map(g => g.id));
-      // 归类到四边：按「离哪条边近」判断（不对称出血也能对；正好居中时贴哪边都一样）。
-      const margins = {};
-      for (const t of targets) {
-        if (t.direction === "horizontal") {
-          const side = Math.abs(t.coordinate) <= Math.abs(doc.height - t.coordinate) ? "top" : "bottom";
-          margins[side] = { _unit: "pixelsUnit", _value: t.coordinate };
-        } else {
-          const side = Math.abs(t.coordinate) <= Math.abs(doc.width - t.coordinate) ? "left" : "right";
-          margins[side] = { _unit: "pixelsUnit", _value: t.coordinate };
-        }
-      }
-      if (Object.keys(margins).length !== targets.length) return null;
-      try {
-        await ps.action.batchPlay([{
-          _obj: "newGuideLayout",
-          presetKind: { _enum: "presetKindType", _value: "presetKindCustom" },
-          guideLayout: {
-            _obj: "guideLayout",
-            marginTop: margins.top,
-            marginLeft: margins.left,
-            marginBottom: margins.bottom,
-            marginRight: margins.right,
-            guidesColor: { _obj: "RGBColor", red: rgb.r, grain: rgb.g, blue: rgb.b }
-          },
-          guideTarget: { _enum: "guideTarget", _value: "guideTargetCanvas" },
-          replace: false,
-          _options: { dialogOptions: "dontDisplay" }
-        }], {});
-      } catch (error) {
-        return null;
-      }
-      // 逐条认领：方向 + 坐标（按标尺原点换算成 DOM 报告的相对坐标）+ 新 ID，
-      // 缺任何一条整组放弃（不搞半新半旧）。
-      const after = this.listGuides(doc);
-      const claimed = new Set();
-      const result = [];
-      for (const t of targets) {
-        const expected = t.coordinate - (t.direction === "vertical" ? ox : oy);
-        const created = after.find(g =>
-          g.direction === t.direction && Math.abs(g.coordinate - expected) <= 0.1
-          && !beforeIds.has(g.id) && !claimed.has(g.id));
-        if (!created || !Number.isInteger(created.id) || created.docId !== doc.id) return null;
-        claimed.add(created.id);
-        result.push({ id: created.id, docId: created.docId });
-      }
-      return result;
-    },
-    // 调起 PS 自带拾色器（v1.9.11 引入，v1.9.12 重写）：借「设置前景色」命令的
-    // 对话框 —— set 命令的 UI 就是拾色器，dialogOptions: "display" 让它弹出来。
-    // v1.9.11 真机报「命令"设置"当前不可用」：当时用的经典 Clr/Frgc 属性引用形态
-    // 在 UXP 里不被认，而且也没探测过「要不要 modal」。v1.9.12 改成**组合探测**：
-    //   形态0 = 现代 form：foregroundColor 属性 + application 引用（UXP 文档写法）
-    //   形态1 = 经典 form：Clr 类的 Frgc 属性（ExtendScript 时代写法）
-    //   × 不带 modal / 带 modal
-    // 先用 dontDisplay 静默探测（失败 PS 不弹窗），哪个组合可用就记住，再用它
-    // 以 display 正式调起拾色器；确定后读回新前景色，随后**恢复原前景色**
-    // （拾色器只是借道，不能真改用户的前景色）。取消 / 不可用返回 null。
-    pickerFormIndex: -1,
-    pickerInModal: false,
-    pickerDescriptor(form, rgb, dialogMode) {
-      if (form === 0) {
-        return {
-          _obj: "set",
-          _target: [{ _property: "foregroundColor" },
-                    { _ref: "application", _enum: "ordinal", _value: "targetEnum" }],
-          to: { _obj: "RGBColor", red: rgb.r, grain: rgb.g, blue: rgb.b,
-                hexValue: ((1 << 24) + (rgb.r << 16) + (rgb.g << 8) + rgb.b).toString(16).slice(1).toUpperCase() },
-          _options: { dialogOptions: dialogMode }
-        };
-      }
-      return {
-        _obj: "set",
-        _target: [{ _ref: "Clr ", _property: "Frgc" }],
-        to: { _obj: "RGBColor", red: rgb.r, grain: rgb.g, blue: rgb.b },
-        _options: { dialogOptions: dialogMode }
-      };
-    },
-    async restoreForeground(rgb) {
-      if (!rgb) return;
-      try { await ps.action.batchPlay([this.pickerDescriptor(0, rgb, "dontDisplay")], {}); } catch (_) {}
-      try { await ps.action.batchPlay([this.pickerDescriptor(1, rgb, "dontDisplay")], {}); } catch (_) {}
-    },
-    async showColorPicker(startRGB) {
-      const original = this.getForegroundRGB();
-      // 1) 静默探测可用组合（失败不弹窗）：改 FG → 没抛错就算可用 → 恢复 FG。
-      if (this.pickerFormIndex < 0) {
-        const attempts = [
-          { form: 0, modal: false }, { form: 1, modal: false },
-          { form: 0, modal: true }, { form: 1, modal: true }
-        ];
-        for (const att of attempts) {
-          let ok = false;
-          try {
-            if (att.modal) {
-              await ps.core.executeAsModal(async () => {
-                await ps.action.batchPlay([this.pickerDescriptor(att.form, startRGB, "dontDisplay")], {});
-              }, { commandName: "选择颜色", timeOut: 1 });
-            } else {
-              await ps.action.batchPlay([this.pickerDescriptor(att.form, startRGB, "dontDisplay")], {});
-            }
-            ok = true;
-          } catch (_) {}
-          if (original) await this.restoreForeground(original);
-          if (ok) { this.pickerFormIndex = att.form; this.pickerInModal = att.modal; break; }
-        }
-        if (this.pickerFormIndex < 0) return null;   // 全部形态都不行：拾色器不可用
-      }
-      // 2) 用探测到的组合正式调起拾色器；确定 → 读回所选颜色；取消 → null。
-      let picked = null;
-      const displayDesc = this.pickerDescriptor(this.pickerFormIndex, startRGB, "display");
-      try {
-        if (this.pickerInModal) {
-          await ps.core.executeAsModal(async () => {
-            await ps.action.batchPlay([displayDesc], {});
-            // 确定后前景色 = 所选颜色，趁恢复之前读回来。
-            picked = this.getForegroundRGB();
-          }, { commandName: "选择颜色", timeOut: 1 });
-        } else {
-          await ps.action.batchPlay([displayDesc], {});
-          picked = this.getForegroundRGB();
-        }
-      } catch (error) {
-        picked = null;
-      } finally {
-        await this.restoreForeground(original);
-      }
-      return picked;
-    },
     async deleteGuide(doc, id) {
       // Resolve again after every deletion; collection indices change.
       for (let i = 0; i < doc.guides.length; i++) {
@@ -334,23 +192,43 @@ function createPhotoshopHost(ps) {
       const ResampleMethod = ps.constants.ResampleMethod;
       await doc.resizeImage(width, height, resolution, ResampleMethod.BICUBIC);
     },
-    // 画布大小（v1.9.9 起走 batchPlay，为了带上「画布扩展颜色」）：
-    // DOM 的 doc.resizeCanvas 没有颜色参数。PS「画布大小」对话框的扩展颜色在
-    // Action Manager 里是 canvasExtensionColorType 枚举（"Clr " = 自定颜色）+
-    // canvasExtensionColor（RGBC 对象），已从 ScriptListener 记录核实（CnvS 事件）；
-    // 锚点用 horizontal / vertical 两个枚举（left/center/right × top/center/bottom），
-    // 与 AnchorPosition 的九个取值一一对应（CANVAS_ANCHOR 表）。
-    // 返回 true = 扩展颜色一起应用了；false = 画布改了但颜色没应用上（见回退）。
-    async resizeCanvas(doc, width, height, anchor, extensionColor) {
-      if (!active() || active().id !== doc.id) throw new Error("活动文档已改变，请重新点击操作。");
-      const hv = CANVAS_ANCHOR[anchor] || CANVAS_ANCHOR.MIDDLECENTER;
+    // 画布大小（v1.9.13 重写为**多事件形态探测 + 改完核对实际尺寸**）：
+    // v1.9.9~1.9.12 用的 canvasSize 事件在真机上**静默无效**（不报错、不改尺寸），
+    // 弹原生对话框是漏了 dialogOptions（v1.9.12 已修），但「改不动」还在。
+    // 事件名在 AM 里有几个候选：resizeCanvas（stringID，与 UXP DOM 方法同名）、
+    // canvasSize（v1.9.9 起用的，真机无效）、CnvS（charID，ScriptListener 直录）。
+    // 与其猜，不如**每试一个形态就立刻核对文档实际尺寸**：真把尺寸改对了才算数
+    // 并记住；全不行还有 DOM 的 doc.resizeCanvas 兜底（v1.8.x 一路在用，稳）。
+    // 返回 true = 扩展颜色一起应用了；false = 画布改了但颜色没应用上。
+    canvasFormIndex: -1,
+    canvasDescriptors(form, width, height, hv, extensionColor) {
+      // form 0/1：stringID 事件 + stringID 键；form 2：charID 事件 + charID 键
+      //（ScriptListener 直录形态：CnvS / Wdth / Hght / Hrzn / Vrtc / HrzL / VrtL）。
+      if (form === 2) {
+        const desc = {
+          _obj: "CnvS",
+          Wdth: { _unit: "#Pxl", _value: width },
+          Hght: { _unit: "#Pxl", _value: height },
+          Hrzn: { _enum: "HrzL", _value: hv[0] },
+          Vrtc: { _enum: "VrtL", _value: hv[1] },
+          _options: { dialogOptions: "dontDisplay" }
+        };
+        if (extensionColor) {
+          desc.canvasExtensionColorType = { _enum: "canvasExtensionColorType", _value: "Clr " };
+          desc.canvasExtensionColor = {
+            _obj: "RGBC",
+            "Rd  ": extensionColor.r, "Grn ": extensionColor.g, "Bl  ": extensionColor.b
+          };
+        }
+        return desc;
+      }
       const desc = {
-        _obj: "canvasSize",
-        relative: false,
+        _obj: form === 0 ? "resizeCanvas" : "canvasSize",
         width: { _unit: "pixelsUnit", _value: width },
         height: { _unit: "pixelsUnit", _value: height },
         horizontal: { _enum: "horizontalLocation", _value: hv[0] },
-        vertical: { _enum: "verticalLocation", _value: hv[1] }
+        vertical: { _enum: "verticalLocation", _value: hv[1] },
+        _options: { dialogOptions: "dontDisplay" }
       };
       if (extensionColor) {
         desc.canvasExtensionColorType = { _enum: "canvasExtensionColorType", _value: "Clr " };
@@ -359,30 +237,47 @@ function createPhotoshopHost(ps) {
           red: extensionColor.r, grain: extensionColor.g, blue: extensionColor.b
         };
       }
-      // v1.9.12 修真机弹原生对话框：之前这条 batchPlay 忘了带 dialogOptions，
-      // PS 2019+ 对参数不合意的「画布大小」直接弹出原生对话框让用户填，
-      // 面板里的「确认修改」就变成打开 PS 对话框了。dontDisplay 强制静默，
-      // 参数真有问题就报错走下面的回退，绝不再弹窗。
-      desc._options = { dialogOptions: "dontDisplay" };
+      return desc;
+    },
+    canvasMatches(doc, width, height) {
+      // 改完立刻核对实际尺寸（±1px 容差）。doc.width 在不同环境可能是数字或
+      // 带valueOf的对象，统一 Number() 归一。
       try {
-        await ps.action.batchPlay([desc], {});
-        return true;
-      } catch (error) {
-        // 带颜色失败（例如扩展颜色键不被这版 PS 认）→ 先退一次
-        // 不带颜色的 AM；再失败退 DOM 的 resizeCanvas。保证「改画布」优先于颜色。
-        if (extensionColor) {
-          const plain = Object.assign({}, desc);
-          delete plain.canvasExtensionColorType;
-          delete plain.canvasExtensionColor;
-          try {
-            await ps.action.batchPlay([plain], {});
-            return false;
-          } catch (_) {}
-        }
-        const AnchorPosition = ps.constants.AnchorPosition;
-        await doc.resizeCanvas(width, height, AnchorPosition[anchor]);
+        const w = Number(doc.width);
+        const h = Number(doc.height);
+        return Number.isFinite(w) && Number.isFinite(h)
+          && Math.abs(w - width) <= 1 && Math.abs(h - height) <= 1;
+      } catch (_) {
         return false;
       }
+    },
+    async resizeCanvas(doc, width, height, anchor, extensionColor) {
+      if (!active() || active().id !== doc.id) throw new Error("活动文档已改变，请重新点击操作。");
+      const hv = CANVAS_ANCHOR[anchor] || CANVAS_ANCHOR.MIDDLECENTER;
+      // 尝试顺序：记住的胜出形态最优先；每个形态先带色（如需要）再裸试，
+      // 每次都核对实际尺寸，真改动了才算数。
+      const order = [];
+      if (this.canvasFormIndex >= 0) order.push(this.canvasFormIndex);
+      for (const f of [0, 1, 2]) {
+        if (order.indexOf(f) < 0) order.push(f);
+      }
+      for (const form of order) {
+        const variants = extensionColor ? [extensionColor, null] : [null];
+        for (const color of variants) {
+          try {
+            await ps.action.batchPlay([this.canvasDescriptors(form, width, height, hv, color)], {});
+          } catch (_) {
+            continue;   // 这个形态 PS 不认，静默试下一个
+          }
+          if (!this.canvasMatches(doc, width, height)) continue;   // 没真改 → 无效
+          this.canvasFormIndex = form;
+          return color !== null;   // true = 带色成功；false = 裸成功（颜色丢了）
+        }
+      }
+      // 全部 AM 形态无效：DOM 兜底（无扩展颜色，但一定生效）。
+      const AnchorPosition = ps.constants.AnchorPosition;
+      await doc.resizeCanvas(width, height, AnchorPosition[anchor]);
+      return false;
     },
     // 前景 / 背景色（画布扩展颜色选「前景 / 背景」时用）：
     // app.foregroundColor 是 SolidColor，rgb 下有 red/green/blue 三个浮点。
