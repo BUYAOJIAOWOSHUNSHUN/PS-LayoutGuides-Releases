@@ -274,4 +274,13 @@ sp-button.primary { width: 100%; height: 30px; min-height: 30px; margin-top: 6px
 /* 「更新失败，请手动下载更新。」里的链接字：默认蓝色可点，悬停下划线 + 高亮。 */
 .status-link { color: #6fa8ea; cursor: pointer; }
 .status-link:hover { color: #cfe2ff; text-decoration: underline; }
+
+/* 数值框底色调浅（v1.9.17，老大反馈太黑）：sp-textfield 内部底色是组件写死的
+   （主题、Spectrum 变量都动不了它），改用「浅灰衬底 + 半透明控件」——
+   控件透明度 0.5，衬底 #808080 透出来，内部视觉从近黑提到 #4f 左右
+  （PS 对话框的观感），白字随之柔化为浅灰（PS 对话框的字同样偏灰）。
+   透明度不影响焦点与键盘输入。衬底宽度与原数值框一致（88px），几何完全不变，
+   所以 9 个框必须包在 .field-wrap 里（main.js start() 末尾统一包）。 */
+.field-wrap { position: relative; display: flex; flex: 0 0 auto; width: 88px; background: #808080; }
+.field-wrap > sp-textfield { width: 100%; opacity: 0.5; }
 .muted.error-text { color: #ffb4a0; }
