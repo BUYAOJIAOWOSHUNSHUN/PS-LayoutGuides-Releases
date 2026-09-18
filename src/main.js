@@ -1325,6 +1325,8 @@ function start() {
     // 画布扩展颜色下拉（自绘，同单位下拉同一套代码）+ 色块跟随。
     // 选「其它」：已有自定色就直接切过去；没有则弹出面板内取色器（v1.9.13 起
     // 不再依赖 PS 原生拾色器 —— 它在 UXP 里调不出来）。「其它」上边加分割线。
+    // 分割线（v1.9.17）：「背景」下方和「其它」上方各一条 —— 与 PS 原生菜单一样，
+    // 把随文档变的（前景/背景）、固定色（白/黑/灰）、自定入口三段隔开。
     extPickerApi = buildOptionPicker("canvasExtPicker", EXT_OPTIONS, option => EXT_COLOR_NAMES[option] || option, function (option) {
       if (option === "other" && !canvasCustomColor) {
         toggleExtPopup();
@@ -1333,7 +1335,7 @@ function start() {
       canvasExtension = option;
       renderExtSwatch();
       status("画布扩展颜色：" + (EXT_COLOR_NAMES[option] || option) + "。");
-    }, ["other"]);
+    }, ["white", "other"]);
     renderExtSwatch();
     // 色块可点：弹出面板内取色器（stopPropagation 防止 document 级收起把它关掉）。
     el("canvasExtSwatch").addEventListener("click", function (event) {
@@ -1341,6 +1343,18 @@ function start() {
       toggleExtPopup();
     });
     el("canvasExtSwatch").title = "点这里选画布扩展颜色（预设色板 / 十六进制）";
+    // 数值框底色调浅（v1.9.17，老大反馈太黑）：sp-textfield 内部底色是组件写死的
+    //（主题、CSS 变量都动不了它），改用「浅灰衬底 + 半透明控件」——见 styles.css
+    // 的 .field-wrap。9 个数值框（尺寸 5 + 出血 4）统一包一层，几何保持不变。
+    for (const id of ["imageWidth", "imageHeight", "imageResolution", "canvasWidth", "canvasHeight",
+                      "bleed-top", "bleed-bottom", "bleed-left", "bleed-right"]) {
+      const fieldEl = el(id);
+      if (!fieldEl || !fieldEl.parentNode) continue;
+      const wrap = document.createElement("span");
+      wrap.className = "field-wrap";
+      fieldEl.parentNode.insertBefore(wrap, fieldEl);
+      wrap.appendChild(fieldEl);
+    }
     el("applyImageSize").addEventListener("click", () => { void applyImageSize(); });
     el("applyImageSize").title = "按当前值修改图片大小（executeAsModal 包成一步）";
     bindAction(el("restoreImageSize"), restoreImageSize);
