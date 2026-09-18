@@ -427,37 +427,95 @@ function renderExtSwatch() {
   swatch.style.backgroundColor = rgb ? "rgb(" + rgb.r + "," + rgb.g + "," + rgb.b + ")" : "#6f6f6f";
 }
 
-// 弹 PS 拾色器（色块点击 / 选「其它」都走这里）：
-// 以当前有效颜色为起点；确定 → 记为自定色、选项切到「其它」、色块跟随；
-// 取消 → 什么都不变（若是选「其它」引起的，选项回拨到原来的值）。
-async function openExtColorPicker(previousOption) {
-  const start = effectiveExtColor();
-  disableAll(true);
-  status("正在打开 Photoshop 拾色器…");
-  let picked = null;
-  try {
-    picked = await host.showColorPicker(start);
-  } catch (error) {
-    console.error(error);
-    picked = null;
-  } finally {
-    disableAll(false);
-    refresh(false);   // 无文档时按钮该禁用的要回到禁用态（disableAll(false) 会全开）
-  }
-  if (!picked) {
-    if (previousOption) {
-      canvasExtension = previousOption;
-      extPickerApi.set(previousOption);
-    }
-    renderExtSwatch();
-    status(previousOption ? "已取消，画布扩展颜色保持不变。" : "拾色器不可用（当前 Photoshop 不支持）。");
-    return;
-  }
+// 面板内迷你取色器（v1.9.13）：PS 原生拾色器在 UXP 里调不出来
+//（v1.9.11 借道「设置前景色」被拒、v1.9.12 四种组合探测全灭），改成面板内置：
+// 点色块弹出「预设色板（16 色）+ 十六进制输入」小面板，选完即应用。
+const EXT_PRESETS = [
+  "FFFFFF", "000000", "F2F2F2", "D9D9D9", "A6A6A6", "595959", "404040", "808080",
+  "FF0000", "FF8000", "FFE000", "00B050", "00B0F0", "0070C0", "7030A0", "FF00FF"
+];
+let extPopup = null;
+
+function hexToRgb(hex) {
+  const m = /^#?([0-9a-fA-F]{6})$/.exec(String(hex || "").trim());
+  if (!m) return null;
+  const v = parseInt(m[1], 16);
+  return { r: (v >> 16) & 255, g: (v >> 8) & 255, b: v & 255 };
+}
+
+function rgbToHex(rgb) {
+  return ((1 << 24) + (rgb.r << 16) + (rgb.g << 8) + rgb.b).toString(16).slice(1).toUpperCase();
+}
+
+function closeExtPopup() {
+  if (extPopup && extPopup.parentNode) extPopup.parentNode.removeChild(extPopup);
+  extPopup = null;
+}
+
+function applyCustomExtColor(rgb) {
   canvasExtension = "other";
-  canvasCustomColor = picked;
+  canvasCustomColor = rgb;
   extPickerApi.set("other");
   renderExtSwatch();
-  status("画布扩展颜色：自定 rgb(" + picked.r + ", " + picked.g + ", " + picked.b + ")。");
+  closeExtPopup();
+  status("画布扩展颜色：自定 #" + rgbToHex(rgb) + "。");
+}
+
+function toggleExtPopup() {
+  if (extPopup) { closeExtPopup(); return; }
+  const wrap = el("canvasExtSwatchWrap");
+  extPopup = document.createElement("div");
+  extPopup.className = "ext-popup";
+  // 预设色板：两行各 8 格，点一下立即应用。
+  for (let row = 0; row < 2; row++) {
+    const rowEl = document.createElement("div");
+    rowEl.className = "ext-popup-row";
+    for (let i = row * 8; i < row * 8 + 8 && i < EXT_PRESETS.length; i++) {
+      const hex = EXT_PRESETS[i];
+      const cell = document.createElement("span");
+      cell.className = "ext-popup-swatch";
+      cell.style.backgroundColor = "#" + hex;
+      cell.setAttribute("role", "button");
+      cell.setAttribute("tabindex", "0");
+      cell.title = "#" + hex;
+      cell.addEventListener("click", function (event) {
+        event.stopPropagation();
+        applyCustomExtColor(hexToRgb(hex));
+      });
+      rowEl.appendChild(cell);
+    }
+    extPopup.appendChild(rowEl);
+  }
+  // 十六进制输入行：sp-textfield（真输入控件）+ 应用按钮，回车同样生效。
+  const hexRow = document.createElement("div");
+  hexRow.className = "ext-popup-row";
+  const field = document.createElement("sp-textfield");
+  field.className = "ext-popup-input";
+  field.setAttribute("aria-label", "十六进制颜色");
+  const start = effectiveExtColor();
+  field.value = start ? "#" + rgbToHex(start) : "#FFFFFF";
+  const apply = document.createElement("sp-button");
+  apply.setAttribute("variant", "cta");
+  apply.className = "ext-popup-apply";
+  const label = document.createElement("span");
+  label.className = "button-label";
+  label.textContent = "应用";
+  apply.appendChild(label);
+  const applyHex = function () {
+    const rgb = hexToRgb(field.value);
+    if (!rgb) { status("十六进制颜色格式不对，应为 #RRGGBB。", true); return; }
+    applyCustomExtColor(rgb);
+  };
+  apply.addEventListener("click", function (event) { event.stopPropagation(); applyHex(); });
+  field.addEventListener("keydown", function (event) {
+    if (event.key === "Enter") { event.preventDefault(); applyHex(); }
+    event.stopPropagation();
+  });
+  field.addEventListener("click", function (event) { event.stopPropagation(); });
+  hexRow.appendChild(field);
+  hexRow.appendChild(apply);
+  extPopup.appendChild(hexRow);
+  wrap.appendChild(extPopup);
 }
 
 function unitToPixels(value, unit, ppi) {
@@ -1139,10 +1197,11 @@ function start() {
       status("画布大小单位：" + (UNIT_NAMES[canvasUnit] || "厘米") + "。");
     });
     // 画布扩展颜色下拉（自绘，同单位下拉同一套代码）+ 色块跟随。
-    // 选「其它」：已有自定色就直接切过去；没有则当场弹 PS 拾色器，取消则回拨选项。
+    // 选「其它」：已有自定色就直接切过去；没有则弹出面板内取色器（v1.9.13 起
+    // 不再依赖 PS 原生拾色器 —— 它在 UXP 里调不出来）。
     extPickerApi = buildOptionPicker("canvasExtPicker", EXT_OPTIONS, option => EXT_COLOR_NAMES[option] || option, function (option) {
       if (option === "other" && !canvasCustomColor) {
-        void openExtColorPicker(canvasExtension);
+        toggleExtPopup();
         return;
       }
       canvasExtension = option;
@@ -1150,9 +1209,12 @@ function start() {
       status("画布扩展颜色：" + (EXT_COLOR_NAMES[option] || option) + "。");
     });
     renderExtSwatch();
-    // 色块可点：以当前颜色为起点弹 PS 拾色器，确定后选项自动切到「其它」。
-    bindAction(el("canvasExtSwatch"), () => { void openExtColorPicker(null); });
-    el("canvasExtSwatch").title = "点这里打开 Photoshop 拾色器，自选画布扩展颜色";
+    // 色块可点：弹出面板内取色器（stopPropagation 防止 document 级收起把它关掉）。
+    el("canvasExtSwatch").addEventListener("click", function (event) {
+      event.stopPropagation();
+      toggleExtPopup();
+    });
+    el("canvasExtSwatch").title = "点这里选画布扩展颜色（预设色板 / 十六进制）";
     el("applyImageSize").addEventListener("click", () => { void applyImageSize(); });
     el("applyImageSize").title = "按当前值修改图片大小（executeAsModal 包成一步）";
     bindAction(el("restoreImageSize"), restoreImageSize);
