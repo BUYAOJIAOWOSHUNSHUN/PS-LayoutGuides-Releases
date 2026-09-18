@@ -192,92 +192,81 @@ function createPhotoshopHost(ps) {
       const ResampleMethod = ps.constants.ResampleMethod;
       await doc.resizeImage(width, height, resolution, ResampleMethod.BICUBIC);
     },
-    // 画布大小（v1.9.13 重写为**多事件形态探测 + 改完核对实际尺寸**）：
-    // v1.9.9~1.9.12 用的 canvasSize 事件在真机上**静默无效**（不报错、不改尺寸），
-    // 弹原生对话框是漏了 dialogOptions（v1.9.12 已修），但「改不动」还在。
-    // 事件名在 AM 里有几个候选：resizeCanvas（stringID，与 UXP DOM 方法同名）、
-    // canvasSize（v1.9.9 起用的，真机无效）、CnvS（charID，ScriptListener 直录）。
-    // 与其猜，不如**每试一个形态就立刻核对文档实际尺寸**：真把尺寸改对了才算数
-    // 并记住；全不行还有 DOM 的 doc.resizeCanvas 兜底（v1.8.x 一路在用，稳）。
-    // 返回 true = 扩展颜色一起应用了；false = 画布改了但颜色没应用上。
-    canvasFormIndex: -1,
-    canvasDescriptors(form, width, height, hv, extensionColor) {
-      // form 0/1：stringID 事件 + stringID 键；form 2：charID 事件 + charID 键
-      //（ScriptListener 直录形态：CnvS / Wdth / Hght / Hrzn / Vrtc / HrzL / VrtL）。
-      if (form === 2) {
-        const desc = {
-          _obj: "CnvS",
-          Wdth: { _unit: "#Pxl", _value: width },
-          Hght: { _unit: "#Pxl", _value: height },
-          Hrzn: { _enum: "HrzL", _value: hv[0] },
-          Vrtc: { _enum: "VrtL", _value: hv[1] },
-          _options: { dialogOptions: "dontDisplay" }
-        };
-        if (extensionColor) {
-          desc.canvasExtensionColorType = { _enum: "canvasExtensionColorType", _value: "Clr " };
-          desc.canvasExtensionColor = {
-            _obj: "RGBC",
-            "Rd  ": extensionColor.r, "Grn ": extensionColor.g, "Bl  ": extensionColor.b
-          };
-        }
-        return desc;
-      }
-      const desc = {
-        _obj: form === 0 ? "resizeCanvas" : "canvasSize",
-        width: { _unit: "pixelsUnit", _value: width },
-        height: { _unit: "pixelsUnit", _value: height },
-        horizontal: { _enum: "horizontalLocation", _value: hv[0] },
-        vertical: { _enum: "verticalLocation", _value: hv[1] },
-        _options: { dialogOptions: "dontDisplay" }
-      };
-      if (extensionColor) {
-        desc.canvasExtensionColorType = { _enum: "canvasExtensionColorType", _value: "Clr " };
-        desc.canvasExtensionColor = {
-          _obj: "RGBColor",
-          red: extensionColor.r, grain: extensionColor.g, blue: extensionColor.b
-        };
-      }
-      return desc;
-    },
-    canvasMatches(doc, width, height) {
-      // 改完立刻核对实际尺寸（±1px 容差）。doc.width 在不同环境可能是数字或
-      // 带valueOf的对象，统一 Number() 归一。
-      try {
-        const w = Number(doc.width);
-        const h = Number(doc.height);
-        return Number.isFinite(w) && Number.isFinite(h)
-          && Math.abs(w - width) <= 1 && Math.abs(h - height) <= 1;
-      } catch (_) {
-        return false;
-      }
-    },
+    // 画布大小（v1.9.15 重写为「DOM 改尺寸 + 扩展区域手动补色」，彻底告别弹窗）：
+    // AM 的 canvasSize / resizeCanvas / CnvS 三个事件形态在真机上都不老实 ——
+    // v1.9.12 补了 dialogOptions 不弹错误框了，但参数仍被判定「不完整」，
+    // PS 照样弹原生「画布大小」对话框（dontDisplay 挡不住「需要补充参数」的场景）。
+    // 所以现在改用 DOM 的 doc.resizeCanvas（v1.8.x 一路在用，必生效、从不弹窗），
+    // 扩展颜色靠**事后补色**：按锚点算出新增区域（上下左右最多四条），
+    // 在**背景层**上逐块填充所选颜色 —— 与 PS「画布扩展颜色」的原生语义一致
+    //（原生也只填背景层；没有背景层时扩展区域本来就是透明的，跳过补色）。
+    // 返回 true = 颜色已应用（或本次用不上）；false = 画布改了但颜色没应用上。
     async resizeCanvas(doc, width, height, anchor, extensionColor) {
       if (!active() || active().id !== doc.id) throw new Error("活动文档已改变，请重新点击操作。");
-      const hv = CANVAS_ANCHOR[anchor] || CANVAS_ANCHOR.MIDDLECENTER;
-      // 尝试顺序：记住的胜出形态最优先；每个形态先带色（如需要）再裸试，
-      // 每次都核对实际尺寸，真改动了才算数。
-      const order = [];
-      if (this.canvasFormIndex >= 0) order.push(this.canvasFormIndex);
-      for (const f of [0, 1, 2]) {
-        if (order.indexOf(f) < 0) order.push(f);
-      }
-      for (const form of order) {
-        const variants = extensionColor ? [extensionColor, null] : [null];
-        for (const color of variants) {
-          try {
-            await ps.action.batchPlay([this.canvasDescriptors(form, width, height, hv, color)], {});
-          } catch (_) {
-            continue;   // 这个形态 PS 不认，静默试下一个
-          }
-          if (!this.canvasMatches(doc, width, height)) continue;   // 没真改 → 无效
-          this.canvasFormIndex = form;
-          return color !== null;   // true = 带色成功；false = 裸成功（颜色丢了）
-        }
-      }
-      // 全部 AM 形态无效：DOM 兜底（无扩展颜色，但一定生效）。
+      const w0 = Number(doc.width);
+      const h0 = Number(doc.height);
       const AnchorPosition = ps.constants.AnchorPosition;
-      await doc.resizeCanvas(width, height, AnchorPosition[anchor]);
-      return false;
+      await doc.resizeCanvas(width, height, AnchorPosition[anchor] || AnchorPosition.MIDDLECENTER);
+      if (!extensionColor) return true;
+      const w1 = Number(doc.width);
+      const h1 = Number(doc.height);
+      if (!Number.isFinite(w1) || !Number.isFinite(h1)) return false;
+      // 锚点 → 旧画布在新画布里的偏移（LEFT/RIGHT/TOP/BOTTOM 优先于 CENTER 匹配）。
+      const dx = anchor.indexOf("LEFT") >= 0 ? 0 : anchor.indexOf("RIGHT") >= 0 ? w1 - w0 : (w1 - w0) / 2;
+      const dy = anchor.indexOf("TOP") >= 0 ? 0 : anchor.indexOf("BOTTOM") >= 0 ? h1 - h0 : (h1 - h0) / 2;
+      // 扩展区域 = 新画布 − 旧画布位置，拆成上下左右四条（可能只有部分存在）。
+      const rects = [];
+      if (dy > 0.5) rects.push({ left: 0, top: 0, right: w1, bottom: dy });
+      if (dy + h0 < h1 - 0.5) rects.push({ left: 0, top: dy + h0, right: w1, bottom: h1 });
+      const midTop = Math.max(0, dy);
+      const midBottom = Math.min(h1, dy + h0);
+      if (dx > 0.5 && midBottom - midTop > 0.5) rects.push({ left: 0, top: midTop, right: dx, bottom: midBottom });
+      if (dx + w0 < w1 - 0.5 && midBottom - midTop > 0.5) rects.push({ left: dx + w0, top: midTop, right: w1, bottom: midBottom });
+      if (!rects.length) return true;   // 画布缩小或尺寸不变：没有新增区域，颜色用不上
+      // 补色目标是**背景层**（与 PS 原生语义一致）；找不到背景层就跳过补色。
+      const bg = this.findBackgroundLayer(doc);
+      if (!bg) return false;
+      const previousIds = doc.activeLayers.map(l => l.id);
+      doc.activeLayers = [bg];
+      try {
+        for (const r of rects) {
+          await ps.action.batchPlay([
+            { _obj: "setd", _target: [{ _ref: "Chnl", _property: "fsel" }],
+              to: { _obj: "rectangle",
+                    top: { _unit: "pixelsUnit", _value: r.top },
+                    left: { _unit: "pixelsUnit", _value: r.left },
+                    bottom: { _unit: "pixelsUnit", _value: r.bottom },
+                    right: { _unit: "pixelsUnit", _value: r.right } },
+              _options: { dialogOptions: "dontDisplay" } },
+            { _obj: "Fl  ",
+              Usng: { _obj: "RGBColor", red: extensionColor.r, grain: extensionColor.g, blue: extensionColor.b },
+              Opct: { _unit: "percentUnit", _value: 100 },
+              Md: { _enum: "blendMode", _value: "normal" },
+              _options: { dialogOptions: "dontDisplay" } }
+          ], {});
+        }
+      } finally {
+        try {
+          await ps.action.batchPlay([{ _obj: "Dslc", _target: [{ _ref: "Chnl", _property: "fsel" }],
+            _options: { dialogOptions: "dontDisplay" } }], {});
+        } catch (_) {}
+        // 恢复用户原本的激活图层。
+        const restore = [];
+        for (let i = 0; i < doc.layers.length; i++) {
+          if (previousIds.indexOf(doc.layers[i].id) >= 0) restore.push(doc.layers[i]);
+        }
+        if (restore.length) doc.activeLayers = restore;
+      }
+      return true;
+    },
+    findBackgroundLayer(doc) {
+      try { if (doc.backgroundLayer) return doc.backgroundLayer; } catch (_) {}
+      try {
+        for (let i = 0; i < doc.layers.length; i++) {
+          if (doc.layers[i].isBackgroundLayer) return doc.layers[i];
+        }
+      } catch (_) {}
+      return null;
     },
     // 前景 / 背景色（画布扩展颜色选「前景 / 背景」时用）：
     // app.foregroundColor 是 SolidColor，rgb 下有 red/green/blue 三个浮点。
