@@ -139,7 +139,7 @@ class GuideService {
           left: millimetresToPixels(bleedMM.left, doc.resolution)
         };
         // 版心线 / LOGO 高度线 / 背书高度线基于**出血内缩后的区域**计算：
-        // 出血 1cm 时，版心边距从出血线往里量，而不是从画布边缘（老大的规则，v1.8.5 起）。
+        // 出血 1cm 时，版心边距从出血线往里量，而不是从画布边缘（老大的规则，v1.9 起）。
         const contentW = doc.width - bleedPx.left - bleedPx.right;
         const contentH = doc.height - bleedPx.top - bleedPx.bottom;
         // clear 模式不算辅助线位置，布局用什么尺寸都行，别让超大出血把「清除」也卡住。
