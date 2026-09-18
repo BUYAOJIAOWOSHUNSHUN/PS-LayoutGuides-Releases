@@ -8,10 +8,10 @@
 <body>
   <div class="panel">
     <header class="toolbar">
-      <!-- 状态条和标题同一行，右对齐（老大要求）：既省一行高度，操作反馈又一眼能看到。 -->
+      <!-- v1.9.14：状态条（操作反馈）按老大的要求挪到了面板底部空白区、贴页脚上方，
+           标题行只剩标题 —— 顶部不再被长反馈文字挤占。 -->
       <div class="heading-row">
         <div class="heading">品牌版式标准规范</div>
-        <div id="status" role="status" aria-live="polite">正在启动插件…</div>
       </div>
       <div class="brand-block">
         <div id="brandRow" class="brand-row" aria-label="品牌标准"></div>
@@ -210,6 +210,12 @@
       </div>
     </div>
 
+    <!-- 操作反馈条（v1.9.14 从标题行挪来）：常驻在内容区与页脚之间的底部空白区，
+         靠下对齐 —— 长反馈有限高内部滚动，不会把面板撑变形。 -->
+    <div class="status-strip">
+      <div id="status" role="status" aria-live="polite">正在启动插件…</div>
+    </div>
+
     <!-- 版本号已经跟在标题后面了，页脚只留更新入口和版权，尽量压薄。 -->
     <footer class="panel-footer">
       <div class="update-row">
@@ -218,7 +224,7 @@
         <div class="update-left">
           <sp-button id="checkUpdate" variant="secondary" class="update-button"><span class="button-label">检查更新</span></sp-button>
           <!-- 版本号跟着「检查更新」走：查更新时一眼能对上「本地是什么版本、远端是什么版本」。 -->
-          <span id="footerVersion" class="footer-version">v1.9.13</span>
+          <span id="footerVersion" class="footer-version">v1.9.14</span>
         </div>
         <!-- 更新状态（发现新版本 / 网络错误等）跟在版本号后面；版权名固定最右。
              space-between + 状态行 flex:1：状态显示时贴着版本号，收起时版权自然靠右。 -->
