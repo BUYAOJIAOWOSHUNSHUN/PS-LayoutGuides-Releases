@@ -579,6 +579,65 @@ function formatUnitValue(px, unit, ppi) {
   return unit === "px" ? String(Math.round(v)) : String(Number(v.toFixed(2)));
 }
 
+/* ---------- 自绘单位下拉 ---------- */
+// sp-picker 真机「菜单能弹但选项选不上」（事件行为不可控，返工两轮），弃用。
+// 自绘和自绘数值框同一套路：容器 div（当前值 + 箭头）+ 点击弹出菜单 + 点选项回调。
+const UNIT_OPTIONS = ["px", "in", "cm", "mm", "pt", "pc"];
+
+function buildUnitPicker(pickerId, onChange) {
+  const picker = el(pickerId);
+  const label = document.createElement("span");
+  label.className = "unit-label";
+  const chevron = document.createElement("span");
+  chevron.className = "unit-chevron";
+  chevron.textContent = "▾";
+  picker.appendChild(label);
+  picker.appendChild(chevron);
+  let menu = null;
+
+  function render() {
+    label.textContent = UNIT_NAMES[picker.getAttribute("data-value")] || "";
+  }
+  function close() {
+    if (menu && menu.parentNode) menu.parentNode.removeChild(menu);
+    menu = null;
+  }
+  function open() {
+    close();
+    menu = document.createElement("div");
+    menu.className = "unit-menu";
+    const current = picker.getAttribute("data-value");
+    for (let i = 0; i < UNIT_OPTIONS.length; i++) {
+      (function (unit) {
+        const item = document.createElement("div");
+        item.className = "unit-option-item";
+        item.textContent = (unit === current ? "✓ " : "") + (UNIT_NAMES[unit] || unit);
+        item.addEventListener("click", function (event) {
+          event.stopPropagation();
+          picker.setAttribute("data-value", unit);
+          render();
+          close();
+          onChange(unit);
+        });
+        menu.appendChild(item);
+      })(UNIT_OPTIONS[i]);
+    }
+    picker.appendChild(menu);
+  }
+  function toggle(event) {
+    event.stopPropagation();
+    if (menu) close();
+    else open();
+  }
+  picker.addEventListener("click", toggle);
+  picker.addEventListener("keydown", event => {
+    if (event.key === "Enter" || event.key === " ") { event.preventDefault(); toggle(event); }
+  });
+  // 点面板其它地方收起菜单（UXP 支持 document 级监听）。
+  document.addEventListener("click", function () { close(); });
+  render();
+}
+
 // 编辑保护：轮询 refresh() 每 1.2 秒跑一次，会把数值框重写成文档当前值。
 // 真机上用户敲的数字就是这样被冲掉的（「输一个马上还原」就是它）。
 // 规则：聚焦中的框不回写；用户编辑过（dirty）的框，在文档真的变化
@@ -1084,28 +1143,21 @@ function start() {
       // 输入框不直接改状态：失焦/回车只把焦点移走，真正的修改走「确认修改」按钮。
       valueEl.setAttribute("title", "点一下可直接输入数字，双击全选，回车或点「确认修改」生效");
     }
-    // 单位下拉：一张卡一个，控制宽/高两行（真机 = sp-picker 原生下拉；
-    // 预览替身会把 value 放在属性/属性值里，两种读法都兼容）。
-    el("imageUnitPicker").addEventListener("change", event => {
-      imageUnit = event.target.value || event.target.getAttribute("data-value") || "px";
-      el("imageUnitText").textContent = UNIT_NAMES[imageUnit] || "像素";
+    // 自绘单位下拉：一张卡一个，控制宽/高两行。选中后以文档为准重写换算值。
+    buildUnitPicker("imageUnitPicker", function (unit) {
+      imageUnit = unit;
+      el("imageUnitText").textContent = UNIT_NAMES[unit] || "像素";
       lastSignature = null;   // 单位切换后以文档为准重写换算值
       refresh(false);
-      status("图片大小单位：" + (UNIT_NAMES[imageUnit] || "像素") + "。");
+      status("图片大小单位：" + (UNIT_NAMES[unit] || "像素") + "。");
     });
-    el("canvasUnitPicker").addEventListener("change", event => {
-      canvasUnit = event.target.value || event.target.getAttribute("data-value") || "cm";
+    buildUnitPicker("canvasUnitPicker", function (unit) {
+      canvasUnit = unit;
       el("canvasUnitText").textContent = UNIT_NAMES[canvasUnit] || "厘米";
       lastSignature = null;
       refresh(false);
       status("画布大小单位：" + (UNIT_NAMES[canvasUnit] || "厘米") + "。");
     });
-    // 真机 sp-picker 只认 value，不认 menu-item 的 selected 属性（实测框里显示空白）。
-    // 显式设置一次初值，和 selected 保持一致；预览替身也认这个属性。
-    try {
-      el("imageUnitPicker").value = imageUnit;
-      el("canvasUnitPicker").value = canvasUnit;
-    } catch (error) { console.error("设置单位下拉初值失败:", error); }
     el("applyImageSize").addEventListener("click", () => { void applyImageSize(); });
     el("applyImageSize").title = "按当前值修改图片大小（executeAsModal 包成一步）";
     bindAction(el("restoreImageSize"), restoreImageSize);
