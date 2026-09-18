@@ -110,14 +110,52 @@ manifest 里 `requiredPermissions.localFileSystem` 有三档：
 
 ## 7. UI 组件的选择
 
-- 只用 `sp-button`、`sp-textfield` 这类 Spectrum 组件，加上普通 `div` / `span` / `img`。
+- 只用 `sp-button` 这类 Spectrum 组件，加上普通 `div` / `span` / `img`。
+  **输入框不用 `sp-textfield`**，见 7.3。
 - **避免原生 `<button>`**，UXP 对它的支持不可靠。
-- **避免内联 SVG**，兼容性没保证。有轮廓感的图标（眼睛、挂锁、垃圾桶）统一预渲染成 PNG，
+- **避免内联 SVG**，兼容性没保证。图标（眼睛、挂锁、垃圾桶、上下步进箭头）统一预渲染成 PNG，
   JS 只切 `<img>` 的 `src`，绕开 `transform` / `border-radius` 这些支持不稳定的属性。
-  只有极简形状（上下步进三角箭头）还用 `div` + `border` 拼。
-- 面板宽度按 380px 设计（`preferredDockedSize`），最小 320×480。
+  步进箭头**也是 PNG**：CSS `border` 拼三角在浏览器里是斜接的，在 UXP 里只剩一条横杠。
+- 面板宽度**定死 420px**：`minimumSize.width` 与 `maximumSize.width` 都是 420，
+  高度 400~2560 可拉伸，内容靠纵向滚动。
+  注意改宽度要同时改 4 处 `manifest.json`（min / max / preferredDocked / preferredFloating），
+  以及 `_开发工具/截图.py` 和 `_开发工具/生成界面预览.js` 里的宽度常量。
 
-### 7.1 DOM 操作要避开这几个写法
+### 7.1 别指望能改 Spectrum 组件内部的样式
+
+Spectrum 组件在 UXP 里是**黑盒**（Adobe 原话 "a black-box solution that does not allow
+you to peek into the details"），组件内部自己画的部分，外面的 CSS 够不着。
+已踩到的四个坑，共同点都是**浏览器预览里完全看不出来，只有真机才现原形**：
+
+| 现象 | 结论 |
+|---|---|
+| `sp-button` 里图标和文字不横排（图标在上、文字在下还被裁） | 图标 + 文字要自己包一层 `.button-inner`（自己的 flex row） |
+| CSS `border` 三角在真机只剩一条横杠 | 小箭头一律出 PNG |
+| `sp-textfield` 内部底色写死近黑，CSS 变量盖不掉 | 见 7.3，整块自绘 |
+| `sp-textfield` 的 `quiet` 变体只去了边框、**没去底色** | 同上，`quiet` 不是这个问题的解 |
+
+所以判断一个 Spectrum 组件的样式能不能改，**不要看浏览器预览，也不要只信文档**，
+要么真机试，要么干脆自己包一层 / 自己画。
+
+### 7.2 出血数值框为什么是自绘的（`span` + 键盘事件）
+
+`sp-textfield` 的内部底色是组件自己画的（真机实测 `#1e1e1e`），
+`--spectrum-textfield-background-color` 和 `quiet` 变体都盖不掉。
+外面套一个浅灰容器就变成「灰框里挖了个黑洞」，所以整块自绘：
+
+- 结构：`span.bleed-value[role=textbox][tabindex=0]` + `.stepper` + `span.bleed-unit`
+- **UXP 里除 `sp-textfield` 外没有可用的文本输入控件**，键盘得自己接：
+  数字 / 小数点 / 退格 / 回车 / Esc / 上下箭头，全部在 `onBleedKeydown` 里处理。
+- **自绘控件没有光标**，所以「追加」语义是错的（显示 `2` 时敲 `3` 会变成 `23`）。
+  规则：**本次编辑的第一个按键替换原值**，之后才追加 —— 等价于原生输入框获焦时全选。
+- 自绘元素点一下**不会自动获焦**，`click` 里要补一个 `focus()`。
+- 焦点态用 `.bleed-value:focus` 自己给底色（`#4d4d4d`）。
+- `blur` 提交，但 `commitBleedEdit` 要先判断「是否真的在编辑中」，
+  否则每次点步进箭头都会白跑一次提交，和步进结果打架。
+- `editing` 状态在 `writeBleedValue` / `onBleedInput` 里都要清掉，
+  防止「点箭头 → 再点别处」触发重复提交。
+
+### 7.3 DOM 操作要避开这几个写法
 
 UXP 的 DOM 是自研实现，不是浏览器那套，以下写法**不保证可用**，已全部替换掉：
 
@@ -134,23 +172,59 @@ UXP 的 DOM 是自研实现，不是浏览器那套，以下写法**不保证可
 这类问题不会在逻辑层测试里暴露，只会在真机上表现为「某块 UI 空白」，
 所以宁可写得啰嗦一点。
 
-### 7.2 初始化要分块兜错
+### 7.4 初始化要分块兜错
 
 `src/main.js` 的 `start()` 里，品牌菜单和出血输入各自包一层 try/catch。
-它们依赖图片资源和输入框组件，万一在真机上初始化失败，
+它们依赖图片资源和自绘输入框的键盘绑定，万一在真机上初始化失败，
 不至于连累辅助线按钮整体不可用。
 
-**待真机验证**：把单位文字放进 `sp-textfield` 内部需要覆盖原生边框，
-当前用 `border: none` + `--spectrum-textfield-border-color: transparent` 尝试覆盖。
-UXP 的输入框是封装组件，可能盖不干净，出现「框里套框」。
-盖不住的话备选方案：单位贴框外右侧，或整个输入框自绘。
+**待真机验证（v1.8.3 自绘输入框的根本风险）**：自绘的 `span` 在真机上
+**能不能收到 `keydown`**。UXP 里除 `sp-textfield` 外没有可用的文本输入控件，
+键盘是自己接的；万一真机不给自绘元素派发键盘事件，用户就只剩上下箭头可用。
+真机试的时候**务必点一下数值框敲个数字**。
+
+第二条：`span` 加 `tabindex="0"` 后 `.bleed-value:focus` 的焦点底色在真机上是否生效。
+不生效只是「看不出焦点在哪」，不影响功能。
 
 ---
 
 ## 8. 版本号需要同步的地方
 
-改版本时三处都要改，漏一处就会出现版本显示不一致：
+改版本时四处都要改，漏一处就会出现版本显示不一致：
 
 1. `manifest.json` 的 `version`
 2. `src/update-config.js` 的 `VERSION`
-3. 文件夹名 / 文件名 `品牌版式标准规范PS插件-vX.Y.Z`
+3. `index.html` 里标题后面的 `#headerVersion`（页脚那个 `#versionText` 已删，避免显示两遍）
+4. 文件夹名 / 文件名 `品牌版式标准规范PS插件-vX.Y.Z`
+
+**每次发版必须提版本号**：插件是拿远端 manifest 的 `version` 和本地比大小
+（`compareVersions(latest, current) > 0`），两边一样就判定「已是最新」，一键更新根本不会触发。
+
+---
+
+## 9. 改图片大小 / 画布大小（v1.8.4）
+
+`src/photoshop-host.js` 的 `resizeImage` / `resizeCanvas`，对应 PS 的
+「图像大小」与「画布大小」两个对话框。
+
+```js
+// 图片大小：宽高是像素，resolution 是 PPI。BICUBIC 是 PS 的默认重采样方式。
+await doc.resizeImage(width, height, resolution, ps.constants.ResampleMethod.BICUBIC);
+
+// 画布大小：宽高是像素，anchor 决定画面往哪个方向扩展/收缩。
+await doc.resizeCanvas(width, height, ps.constants.AnchorPosition[anchor]);
+```
+
+`AnchorPosition` 的九个取值：`TOPLEFT` / `TOPCENTER` / `TOPRIGHT` /
+`MIDDLELEFT` / `MIDDLECENTER` / `MIDDLERIGHT` / `BOTTOMLEFT` / `BOTTOMCENTER` / `BOTTOMRIGHT`。
+默认用 `MIDDLECENTER`（中心不动，四边一起变）。
+
+**单位换算**：PS 的 API 只吃像素。界面上画布大小按厘米输入，
+转像素是 `Math.round(cm * resolution / 2.54)`；反过来显示是 `px / resolution * 2.54`。
+
+和辅助线一样，两个调用都必须包在 `executeAsModal` 里，见第 6 节。
+
+**真机待验证**（逻辑层只能验证参数算得对，验证不了 PS 认不认）：
+1. `resizeImage` / `resizeCanvas` 在 UXP 里是否真的生效；
+2. `AnchorPosition` 的枚举名是不是这套（写错会拿到 `undefined`，PS 会抛错）；
+3. 改完能不能 Ctrl+Z 整步撤销 —— 取决于 `executeAsModal` 里的 suspend/resume 是否成对。
