@@ -46,7 +46,10 @@ html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
 .muted, small { display: block; color: #a2a2a2; font-size: 11px; line-height: 17px; margin-top: 3px; overflow-wrap: break-word; }
 /* 页面高度由内容自然决定（min-height 会把内容少的屏幕页下方撑出一大段空白）。 */
 .page { display: block; box-sizing: border-box; }
-.section-heading { display: flex; align-items: center; justify-content: space-between; min-height: 20px; margin-bottom: 6px; }
+.section-heading { display: flex; align-items: center; justify-content: space-between; min-height: 21px; margin-bottom: 6px; }
+/* 标题行右侧控制区：锁定芯片 + mm/cm 单位切换，等高并排。 */
+.heading-controls { display: flex; flex-direction: row; align-items: center; }
+.heading-controls .unit-switch { margin-left: 6px; }
 .section-title { font-size: 13px; font-weight: 600; color: #e0e0e0; }
 .parameter-card { display: block; padding: 0 12px; background: #323232; border: 1px solid #454545; border-radius: 6px; box-sizing: border-box; }
 
@@ -55,19 +58,17 @@ html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
 .unit-option { padding: 3px 9px; font-size: 11px; color: #a2a2a2; }
 .unit-option.active { background: #1473e6; color: #ffffff; }
 .bleed-card { padding: 10px 12px; }
-/* 锁定按钮放在十字正中（中间行左/右之间）：位置即含义 —— 锁住时四边联动。
-   32×32 比数值框略高一点，作为十字的视觉中心。 */
-.lock-button { width: 32px; height: 32px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: #3a3a3a; border: 1px solid #4f4f4f; border-radius: 4px; box-sizing: border-box; }
-.lock-button.locked { background: #4a3f2a; border-color: #b89a5e; }
-/* 锁图标：锁定 = 闭合锁（亮黄），解锁 = 开口锁（灰蓝）。两个状态各一张 PNG，只切 src。 */
-.icon-lock { display: block; width: 20px; height: 20px; flex-shrink: 0; }
-/* 十字排布 + 锁在右上角：第一行「占位块 + 上格 + 锁」三段式（两侧等宽，上格保持居中），
-   中间行 左/右 space-between，第三行「下」居中。行是普通横向 flex（UXP 不支持 CSS Grid）。 */
+/* 锁定按钮做成和 mm/cm 单位按钮同款的小芯片，放在它们前面（老大要求）。
+   默认锁定（main.js 里 bleedLocked = true）；锁定态用蓝色系（黄色太扎眼）。 */
+.lock-button { height: 18px; padding: 0 7px; flex-shrink: 0; display: flex; align-items: center; background: #3a3a3a; border: 1px solid #545454; border-radius: 4px; box-sizing: border-box; cursor: pointer; }
+.lock-button.locked { background: #1f4f86; border-color: #1473e6; }
+/* 锁图标：锁定 = 闭合锁，解锁 = 开口锁。两个状态各一张 PNG，只切 src。 */
+.icon-lock { display: block; width: 13px; height: 13px; flex-shrink: 0; }
+/* 十字排布：上 / 左·右 / 下 三行（锁已挪到标题行），方位直觉跟画布一致。
+   行是普通横向 flex（UXP 不支持 CSS Grid）：上下两行居中，中间行 space-between。 */
 .bleed-grid { min-width: 0; display: flex; flex-direction: column; }
 .bleed-cross-row { display: flex; flex-direction: row; }
 .bleed-cross-center { justify-content: center; }
-.bleed-cross-top { justify-content: space-between; align-items: center; }
-.bleed-cross-spacer { width: 32px; flex-shrink: 0; }
 .bleed-cross-mid { justify-content: space-between; align-items: center; }
 .bleed-cell { min-width: 0; display: flex; align-items: center; padding: 3px 0; box-sizing: border-box; }
 .bleed-cross-mid .bleed-cell + .bleed-cell { margin-left: 12px; }
@@ -135,11 +136,12 @@ sp-button { display: flex; align-items: center; justify-content: center; text-al
 .size-field { display: block; padding-top: 6px; }
 .size-field-label { display: block; font-size: 10px; color: #a2a2a2; margin-bottom: 3px; }
 .size-input-row { display: flex; align-items: center; min-width: 0; }
-/* 单位下拉（真机 = UXP 原生 sp-picker；预览里由生成脚本提供替身）。 */
-sp-picker.unit-picker { width: 64px; min-width: 64px; height: 24px; min-height: 24px; margin-left: 5px; flex-shrink: 0; font-size: 11px; }
-/* 高度/分辨率行右侧的静态单位文字，宽度和下拉对齐（44px ≈ 64 - 左右间隙差）。 */
-.size-unit-static { flex-shrink: 0; margin-left: 5px; width: 64px; box-sizing: border-box; text-align: center; font-size: 11px; color: #b8b8b8; }
-.size-value { display: block; width: 96px; flex-shrink: 0; height: 24px; padding: 0 6px; font-size: 12px; line-height: 24px; color: #e8e8e8; text-align: right; background: #3c3c3c; border: 1px solid #5a5a5a; border-radius: 4px; white-space: nowrap; overflow: hidden; box-sizing: border-box; }
+/* 单位下拉（真机 = UXP 原生 sp-picker；预览里由生成脚本提供替身）。
+   64px 太窄：真机下拉菜单会把「像素」两个字竖着排，加宽到 80px 才放得下。 */
+sp-picker.unit-picker { width: 80px; min-width: 80px; height: 24px; min-height: 24px; margin-left: 5px; flex-shrink: 0; font-size: 11px; }
+/* 高度/分辨率行右侧的静态单位文字，宽度和下拉一致。 */
+.size-unit-static { flex-shrink: 0; margin-left: 5px; width: 80px; box-sizing: border-box; text-align: center; font-size: 11px; color: #b8b8b8; }
+.size-value { display: block; width: 88px; flex-shrink: 0; height: 24px; padding: 0 6px; font-size: 12px; line-height: 24px; color: #e8e8e8; text-align: right; background: #3c3c3c; border: 1px solid #5a5a5a; border-radius: 4px; white-space: nowrap; overflow: hidden; box-sizing: border-box; }
 /* 焦点态：亮蓝边框 + 提亮底色（PS 对话框风格）。闪烁光标由 JS 插入 .caret 元素实现。 */
 .size-value:focus { background: #454545; color: #ffffff; border-color: #4d8dfd; }
 /* 闪烁光标：JS 在聚焦时把 1px 竖线插到文本末尾，定时器切换 visibility 模拟闪烁
