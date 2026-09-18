@@ -184,13 +184,15 @@
         </div>
       </section>
 
-      <!-- 共用一组按钮：两个页签的宽度、高度与间距始终一致。 -->
+      <!-- 共用一组按钮：两个页签的宽度、高度与间距始终一致。
+           v1.9.16：三个按钮并排一行 —— 版心线与下面「删除辅助线」按钮完全等宽，
+           LOGO / 背书平分剩余宽度（老大要求）。 -->
       <section class="guide-section">
         <div class="section-heading"><span class="section-title">生成辅助线</span></div>
         <div class="guide-actions">
-          <sp-button id="update" variant="cta" class="guide-button" disabled><span class="button-label">版心线</span></sp-button>
-          <sp-button id="logo" variant="cta" class="guide-button" disabled><span class="button-label">LOGO 高度线</span></sp-button>
-          <sp-button id="endorsement" variant="cta" class="guide-button" disabled><span class="button-label">背书高度线</span></sp-button>
+          <sp-button id="update" variant="cta" class="guide-button main-guide" disabled><span class="button-label">版心线</span></sp-button>
+          <sp-button id="logo" variant="cta" class="guide-button sub-guide" disabled><span class="button-label">LOGO 高度线</span></sp-button>
+          <sp-button id="endorsement" variant="cta" class="guide-button sub-guide" disabled><span class="button-label">背书高度线</span></sp-button>
         </div>
       </section>
 
@@ -224,7 +226,7 @@
         <div class="update-left">
           <sp-button id="checkUpdate" variant="secondary" class="update-button"><span class="button-label">检查更新</span></sp-button>
           <!-- 版本号跟着「检查更新」走：查更新时一眼能对上「本地是什么版本、远端是什么版本」。 -->
-          <span id="footerVersion" class="footer-version">v1.9.15</span>
+          <span id="footerVersion" class="footer-version">v1.9.16</span>
         </div>
         <!-- 更新状态（发现新版本 / 网络错误等）跟在版本号后面；版权名固定最右。
              space-between + 状态行 flex:1：状态显示时贴着版本号，收起时版权自然靠右。 -->
