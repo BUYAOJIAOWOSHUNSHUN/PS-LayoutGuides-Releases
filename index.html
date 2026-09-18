@@ -45,23 +45,23 @@
             </div>
             <div class="size-field">
               <span class="size-field-label">宽度</span>
-                <div class="size-input-row">
-                  <span id="imageWidth" class="size-value" role="textbox" tabindex="0" aria-label="图片宽度">0</span>
-                  <!-- 单位下拉是自绘的（div + JS 菜单）：sp-picker 真机事件不可控（菜单能弹但选项选不上），自绘行为完全可控。 -->
-                  <div id="imageUnitPicker" class="unit-picker" role="button" tabindex="0" aria-label="图片大小单位" data-value="px"></div>
-                </div>
+              <div class="size-input-row">
+                <sp-textfield id="imageWidth" class="size-input" aria-label="图片宽度"></sp-textfield>
+                <!-- 单位下拉是自绘的（div + JS 菜单）：sp-picker 真机事件不可控（菜单能弹但选项选不上），自绘行为完全可控。 -->
+                <div id="imageUnitPicker" class="unit-picker" role="button" tabindex="0" aria-label="图片大小单位" data-value="px"></div>
+              </div>
             </div>
             <div class="size-field">
               <span class="size-field-label">高度</span>
               <div class="size-input-row">
-                <span id="imageHeight" class="size-value" role="textbox" tabindex="0" aria-label="图片高度">0</span>
+                <sp-textfield id="imageHeight" class="size-input" aria-label="图片高度"></sp-textfield>
                 <span class="size-unit-static" id="imageUnitText">像素</span>
               </div>
             </div>
             <div class="size-field">
               <span class="size-field-label">分辨率</span>
               <div class="size-input-row">
-                <span id="imageResolution" class="size-value" role="textbox" tabindex="0" aria-label="图片分辨率">0</span>
+                <sp-textfield id="imageResolution" class="size-input" aria-label="图片分辨率"></sp-textfield>
                 <span class="size-unit-static" title="像素/英寸">PPI</span>
               </div>
             </div>
@@ -79,15 +79,15 @@
             </div>
             <div class="size-field">
               <span class="size-field-label">宽度</span>
-                <div class="size-input-row">
-                  <span id="canvasWidth" class="size-value" role="textbox" tabindex="0" aria-label="画布宽度">0</span>
-                  <div id="canvasUnitPicker" class="unit-picker" role="button" tabindex="0" aria-label="画布大小单位" data-value="cm"></div>
-                </div>
+              <div class="size-input-row">
+                <sp-textfield id="canvasWidth" class="size-input" aria-label="画布宽度"></sp-textfield>
+                <div id="canvasUnitPicker" class="unit-picker" role="button" tabindex="0" aria-label="画布大小单位" data-value="cm"></div>
+              </div>
             </div>
             <div class="size-field">
               <span class="size-field-label">高度</span>
               <div class="size-input-row">
-                <span id="canvasHeight" class="size-value" role="textbox" tabindex="0" aria-label="画布高度">0</span>
+                <sp-textfield id="canvasHeight" class="size-input" aria-label="画布高度"></sp-textfield>
                 <span class="size-unit-static" id="canvasUnitText">厘米</span>
               </div>
             </div>
@@ -125,7 +125,7 @@
               <div class="bleed-cell">
                 <span class="bleed-label">上</span>
                 <div class="bleed-input">
-                  <span id="bleed-top" class="bleed-value" role="textbox" tabindex="0" aria-label="上出血">0</span><div class="stepper"><div id="step-up-top" class="step-up" role="button" tabindex="0" aria-label="上出血增加 1"><img class="chevron" src="assets/chevron-up.png" alt=""></div><div id="step-down-top" class="step-down" role="button" tabindex="0" aria-label="上出血减少 1"><img class="chevron" src="assets/chevron-down.png" alt=""></div></div><span class="bleed-unit" id="unit-top">mm</span>
+                  <sp-textfield id="bleed-top" class="bleed-field" aria-label="上出血"></sp-textfield><div class="stepper"><div id="step-up-top" class="step-up" role="button" tabindex="0" aria-label="上出血增加 1"><img class="chevron" src="assets/chevron-up.png" alt=""></div><div id="step-down-top" class="step-down" role="button" tabindex="0" aria-label="上出血减少 1"><img class="chevron" src="assets/chevron-down.png" alt=""></div></div><span class="bleed-unit" id="unit-top">mm</span>
                 </div>
               </div>
             </div>
@@ -133,13 +133,13 @@
               <div class="bleed-cell">
                 <span class="bleed-label">左</span>
                 <div class="bleed-input">
-                  <span id="bleed-left" class="bleed-value" role="textbox" tabindex="0" aria-label="左出血">0</span><div class="stepper"><div id="step-up-left" class="step-up" role="button" tabindex="0" aria-label="左出血增加 1"><img class="chevron" src="assets/chevron-up.png" alt=""></div><div id="step-down-left" class="step-down" role="button" tabindex="0" aria-label="左出血减少 1"><img class="chevron" src="assets/chevron-down.png" alt=""></div></div><span class="bleed-unit" id="unit-left">mm</span>
+                  <sp-textfield id="bleed-left" class="bleed-field" aria-label="左出血"></sp-textfield><div class="stepper"><div id="step-up-left" class="step-up" role="button" tabindex="0" aria-label="左出血增加 1"><img class="chevron" src="assets/chevron-up.png" alt=""></div><div id="step-down-left" class="step-down" role="button" tabindex="0" aria-label="左出血减少 1"><img class="chevron" src="assets/chevron-down.png" alt=""></div></div><span class="bleed-unit" id="unit-left">mm</span>
                 </div>
               </div>
               <div class="bleed-cell">
                 <span class="bleed-label">右</span>
                 <div class="bleed-input">
-                  <span id="bleed-right" class="bleed-value" role="textbox" tabindex="0" aria-label="右出血">0</span><div class="stepper"><div id="step-up-right" class="step-up" role="button" tabindex="0" aria-label="右出血增加 1"><img class="chevron" src="assets/chevron-up.png" alt=""></div><div id="step-down-right" class="step-down" role="button" tabindex="0" aria-label="右出血减少 1"><img class="chevron" src="assets/chevron-down.png" alt=""></div></div><span class="bleed-unit" id="unit-right">mm</span>
+                  <sp-textfield id="bleed-right" class="bleed-field" aria-label="右出血"></sp-textfield><div class="stepper"><div id="step-up-right" class="step-up" role="button" tabindex="0" aria-label="右出血增加 1"><img class="chevron" src="assets/chevron-up.png" alt=""></div><div id="step-down-right" class="step-down" role="button" tabindex="0" aria-label="右出血减少 1"><img class="chevron" src="assets/chevron-down.png" alt=""></div></div><span class="bleed-unit" id="unit-right">mm</span>
                 </div>
               </div>
             </div>
@@ -147,7 +147,7 @@
               <div class="bleed-cell">
                 <span class="bleed-label">下</span>
                 <div class="bleed-input">
-                  <span id="bleed-bottom" class="bleed-value" role="textbox" tabindex="0" aria-label="下出血">0</span><div class="stepper"><div id="step-up-bottom" class="step-up" role="button" tabindex="0" aria-label="下出血增加 1"><img class="chevron" src="assets/chevron-up.png" alt=""></div><div id="step-down-bottom" class="step-down" role="button" tabindex="0" aria-label="下出血减少 1"><img class="chevron" src="assets/chevron-down.png" alt=""></div></div><span class="bleed-unit" id="unit-bottom">mm</span>
+                  <sp-textfield id="bleed-bottom" class="bleed-field" aria-label="下出血"></sp-textfield><div class="stepper"><div id="step-up-bottom" class="step-up" role="button" tabindex="0" aria-label="下出血增加 1"><img class="chevron" src="assets/chevron-up.png" alt=""></div><div id="step-down-bottom" class="step-down" role="button" tabindex="0" aria-label="下出血减少 1"><img class="chevron" src="assets/chevron-down.png" alt=""></div></div><span class="bleed-unit" id="unit-bottom">mm</span>
                 </div>
               </div>
             </div>
@@ -198,7 +198,7 @@
         <div class="update-left">
           <sp-button id="checkUpdate" variant="secondary" class="update-button"><span class="button-label">检查更新</span></sp-button>
           <!-- 版本号跟着「检查更新」走：查更新时一眼能对上「本地是什么版本、远端是什么版本」。 -->
-          <span id="footerVersion" class="footer-version">v1.9.5</span>
+          <span id="footerVersion" class="footer-version">v1.9.6</span>
         </div>
         <!-- 更新状态（发现新版本 / 网络错误等）跟在版本号后面；版权名固定最右。
              space-between + 状态行 flex:1：状态显示时贴着版本号，收起时版权自然靠右。 -->
