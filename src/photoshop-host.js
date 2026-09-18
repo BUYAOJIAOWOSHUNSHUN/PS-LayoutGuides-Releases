@@ -81,7 +81,19 @@ function createPhotoshopHost(ps) {
       if (after === before) throw new Error("辅助线显示状态未改变。");
       return after;
     },
-    modal(fn, name) { return ps.core.executeAsModal(fn, { commandName: name, timeOut: 1 }); }
+    modal(fn, name) { return ps.core.executeAsModal(fn, { commandName: name, timeOut: 1 }); },
+    // 图片大小：宽/高/分辨率都是像素 + PPI。ResampleMethod.BICUBIC 是 PS 默认。
+    async resizeImage(doc, width, height, resolution) {
+      if (!active() || active().id !== doc.id) throw new Error("活动文档已改变，请重新点击操作。");
+      const ResampleMethod = ps.constants.ResampleMethod;
+      await doc.resizeImage(width, height, resolution, ResampleMethod.BICUBIC);
+    },
+    // 画布大小：宽/高是像素，anchor 是 TOPLEFT / TOPCENTER / ... / BOTTOMRIGHT 中的一个。
+    async resizeCanvas(doc, width, height, anchor) {
+      if (!active() || active().id !== doc.id) throw new Error("活动文档已改变，请重新点击操作。");
+      const AnchorPosition = ps.constants.AnchorPosition;
+      await doc.resizeCanvas(width, height, AnchorPosition[anchor]);
+    }
   };
 }
 
