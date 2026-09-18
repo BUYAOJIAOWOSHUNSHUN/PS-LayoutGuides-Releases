@@ -172,7 +172,11 @@ sp-button { display: flex; align-items: center; justify-content: center; text-al
 .ext-popup-row { display: flex; flex-direction: row; align-items: center; margin-bottom: 4px; }
 .ext-popup-row:last-child { margin-bottom: 0; }
 .ext-popup-sv { position: relative; width: 142px; height: 108px; margin-right: 5px; box-sizing: border-box; border: 1px solid #5a5a5a; cursor: crosshair; }
-.ext-popup-sv-fill { width: 100%; height: 100%; background: linear-gradient(to top, #000000, rgba(0,0,0,0)); }
+/* SV 选色面 = 三层叠（v1.9.20）：底层纯色（JS 写 background-color，随色相变）+
+   两层**静态样式表渐变**遮罩（白→透明横向、黑→透明纵向）。
+   之前由 JS 动态写渐变 background，真机上间歇性失效（整块变黑），故改此稳态结构。 */
+.ext-popup-sv-white { position: absolute; left: 0; top: 0; width: 100%; height: 100%; background: linear-gradient(to right, #ffffff, rgba(255,255,255,0)); }
+.ext-popup-sv-black { position: absolute; left: 0; top: 0; width: 100%; height: 100%; background: linear-gradient(to top, #000000, rgba(0,0,0,0)); }
 /* 位置标识（v1.9.16）：白边小方环标当前选中的 s/v 点；色相条上白色横杠标当前色相。
    注意 border-radius 在真机不稳（v1.9.8 教训），环用方框不用圆。 */
 .ext-popup-sv-marker { position: absolute; width: 12px; height: 12px; border: 2px solid #ffffff; box-sizing: border-box; }
