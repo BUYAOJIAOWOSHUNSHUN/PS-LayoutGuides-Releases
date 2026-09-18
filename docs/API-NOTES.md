@@ -34,13 +34,51 @@ value >> 16            // 错误：会截断小数，负数还会算错
 **v1.9.7 起的补充结论（来自「新建参考线」对话框能选颜色的反向推理）：**
 - 既然 PS 自带的「新建参考线」对话框能随线选颜色，说明**底层数据模型支持单条参考线带色**，
   只是 DOM API 没暴露 —— 走 batchPlay（Action Manager）建线即可带上 RGB 颜色。
-- 实现（photoshop-host.addColoredGuide）：batchPlay `_obj:"make"` + `new:{_obj:"guide",
-  position, orientation, color:{_obj:"RGBColor", red, grain, blue}}`；
-  建完按「方向+坐标+新 ID」在 `doc.guides` 里认领归属；不支持时自动退回普通建线并提示。
-- **待真机终验**：颜色键（color → RGBColor{red/grain/blue}）是按 AM 规范推测的，
-  真机上若颜色未生效（线是默认色），需要换键名再试（候选：`"Clr "` charID 形式）。
+- **v1.9.8 真机实测**：`new:{_obj:"guide", position, orientation, color:{_obj:"RGBColor"}}`
+  这一种写法**颜色不生效**（线出来了、颜色没上，或报错退回普通线）——键名是猜的，猜错了。
+- **v1.9.9 改为多方案探测**（photoshop-host.addColoredGuide）：候选颜色键按可能性排序 ——
+  ① `"Clr "`（charID）+ RGBC 对象（AM 里所有带色对象的标准写法）；
+  ② `"color"`（stringID，v1.9.8 老方案）；③ `"guidesColor"`（PS 官方术语表
+  PIStringTerminology.h 里登记过的 stringID，New Guide Layout 的颜色下拉最可能用它）；
+  ④⑤ 同样的键挂在 make 描述符顶层。逐个试，建完用 AM get 回读参考线描述符
+  （`{_ref:"guide", _index: n+1}`，1 基）验证颜色键是否真的写进去了：
+  描述符里有颜色键 = 实锤成功并记住；读得到方向坐标但没颜色键 = 删线换下一个键；
+  回读报错 = 无法验证，按成功收货。全不认才退回普通建线（与 v1.9.8 行为一致）。
+- **待真机终验**：五种键至少一种生效即可；全不生效时只能换思路
+  （例如改用参考线偏好色分组管理，或改用图层线条方案）。
 
-依据：PS「新建参考线」对话框自带颜色选项（用户截图）+ Action Manager 建线事件；真机终验待补。
+依据：PS「新建参考线 / 新建参考线版面」对话框自带颜色选项（用户截图）+ Action Manager
+建线事件；`guidesColor` 见 Adobe photoshop-cpp-sdk 仓库 PIStringTerminology.h；
+多方案探测与回读验证为 v1.9.9 新增，真机终验待补。
+
+---
+
+## 2.1 画布扩展颜色（v1.9.9，键名有实锤）
+
+`src/photoshop-host.js` 的 `resizeCanvas`
+
+DOM 的 `doc.resizeCanvas` 没有颜色参数，扩展颜色只能走 batchPlay 的 canvasSize 事件。
+下面的键名与结构**从 ScriptListener 公开记录里核实**（如 Script Arsenal 的 Film Edges.jsx），
+不是猜的：
+
+```js
+{
+  _obj: "canvasSize",
+  relative: false,
+  width:  { _unit: "pixelsUnit", _value: 宽 },
+  height: { _unit: "pixelsUnit", _value: 高 },
+  horizontal: { _enum: "horizontalLocation", _value: "left" | "center" | "right" },
+  vertical:   { _enum: "verticalLocation",   _value: "top"  | "center" | "bottom" },
+  // 只在需要扩展颜色时带这两项（"Clr " = 自定颜色）：
+  canvasExtensionColorType: { _enum: "canvasExtensionColorType", _value: "Clr " },
+  canvasExtensionColor: { _obj: "RGBColor", red, grain, blue }
+}
+```
+
+- 锚点用 horizontal / vertical 两个枚举，与 AnchorPosition 九格一一对应（CANVAS_ANCHOR 表）。
+- 三级回退：带颜色 AM 失败（如文档无背景层）→ 不带颜色 AM → DOM resizeCanvas。
+  颜色没应用上时返回 false，状态栏会提示。
+- 扩展颜色只影响**新增**的画布区域，且只对有背景层的文档生效 —— PS 本身的行为。
 
 ---
 
