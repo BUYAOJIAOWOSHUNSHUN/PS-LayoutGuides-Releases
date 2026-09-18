@@ -500,7 +500,7 @@ function toggleExtPopup() {
   const startHsv = rgbToHsv(effectiveExtColor());
   extHue = startHsv.h;
   extSV = { s: startHsv.s, v: startHsv.v };
-  // ---- SV 选色区 + 色相条（模仿 PS 拾色器的选色布局，点一下即选）----
+  // ---- SV 选色区 + 色相条（模仿 PS 拾色器的选色布局，点一下即选；带位置标识）----
   const pickRow = document.createElement("div");
   pickRow.className = "ext-popup-row";
   const square = document.createElement("div");
@@ -508,11 +508,21 @@ function toggleExtPopup() {
   const squareFill = document.createElement("div");
   squareFill.className = "ext-popup-sv-fill";
   square.appendChild(squareFill);
+  // 位置标识：白边方框小环，标出当前选中的饱和度 / 明度点（PS 同款形式）。
+  const svMarker = document.createElement("div");
+  svMarker.className = "ext-popup-sv-marker";
+  square.appendChild(svMarker);
   extSvSquare = square;
+  const placeSvMarker = () => {
+    const rect = square.getBoundingClientRect();
+    if (!rect.width) return;
+    svMarker.style.left = Math.max(0, Math.min(rect.width - 12, extSV.s * (rect.width - 12))) + "px";
+    svMarker.style.top = Math.max(0, Math.min(rect.height - 12, (1 - extSV.v) * (rect.height - 12))) + "px";
+  };
   const updateSv = () => {
     square.style.background = "linear-gradient(to right, #ffffff, hsl(" + extHue + ", 100%, 50%))";
+    placeSvMarker();
   };
-  updateSv();
   const pickSv = event => {
     const rect = square.getBoundingClientRect();
     const x = Number.isFinite(event.clientX) ? event.clientX - rect.left : event.offsetX;
@@ -522,17 +532,28 @@ function toggleExtPopup() {
       s: Math.max(0, Math.min(1, x / Math.max(1, rect.width))),
       v: 1 - Math.max(0, Math.min(1, y / Math.max(1, rect.height)))
     };
+    placeSvMarker();
     applyCustomExtColor(hsvToRgb(extHue, extSV.s, extSV.v), true);
   };
   square.addEventListener("click", event => { event.stopPropagation(); pickSv(event); });
   pickRow.appendChild(square);
   const hueBar = document.createElement("div");
   hueBar.className = "ext-popup-hue";
+  // 色相位置标识：白色横杠，标出当前色相（PS 色相滑条的指针形式）。
+  const hueMarker = document.createElement("div");
+  hueMarker.className = "ext-popup-hue-marker";
+  hueBar.appendChild(hueMarker);
+  const placeHueMarker = () => {
+    const rect = hueBar.getBoundingClientRect();
+    if (!rect.width) return;
+    hueMarker.style.top = Math.max(0, Math.min(rect.height - 4, extHue / 360 * (rect.height - 4))) + "px";
+  };
   const pickHue = event => {
     const rect = hueBar.getBoundingClientRect();
     const y = Number.isFinite(event.clientY) ? event.clientY - rect.top : event.offsetY;
     if (!Number.isFinite(y)) return;
     extHue = Math.max(0, Math.min(359, Math.round(y / Math.max(1, rect.height) * 360)));
+    placeHueMarker();
     updateSv();
     applyCustomExtColor(hsvToRgb(extHue, extSV.s, extSV.v), true);
   };
@@ -587,6 +608,9 @@ function toggleExtPopup() {
   hexRow.appendChild(apply);
   extPopup.appendChild(hexRow);
   wrap.appendChild(extPopup);
+  // append 之前量不到尺寸，位置标识要等挂上后再摆放。
+  placeSvMarker();
+  placeHueMarker();
   // 起始十六进制值在 append 之后再赋（预览的替身组件 append 时才升级，提前赋会被吞）。
   const start = effectiveExtColor();
   field.value = start ? "#" + rgbToHex(start) : "#FFFFFF";
@@ -627,7 +651,9 @@ function buildUnitPicker(pickerId, onChange) {
 
 // 通用自绘下拉：单位下拉和画布扩展颜色下拉共用同一套结构（容器 + 标签 + 箭头 +
 // 点击弹出菜单 + 点选项回调 + 点别处收起 + Enter/空格开合）。
-function buildOptionPicker(pickerId, options, labelOf, onChange) {
+// dividerBefore：哪些选项上边要加分割线（v1.9.16，对齐 PS 下拉的设计 ——
+// 「其它」这类自定入口和固定项之间用横线隔开）。
+function buildOptionPicker(pickerId, options, labelOf, onChange, dividerBefore) {
   const picker = el(pickerId);
   const label = document.createElement("span");
   label.className = "unit-label";
@@ -652,6 +678,11 @@ function buildOptionPicker(pickerId, options, labelOf, onChange) {
     const current = picker.getAttribute("data-value");
     for (let i = 0; i < options.length; i++) {
       (function (option) {
+        if (dividerBefore && dividerBefore.indexOf(option) >= 0) {
+          const divider = document.createElement("div");
+          divider.className = "unit-divider";
+          menu.appendChild(divider);
+        }
         const item = document.createElement("div");
         item.className = "unit-option-item";
         item.textContent = (option === current ? "✓ " : "") + labelOf(option);
@@ -1293,7 +1324,7 @@ function start() {
     });
     // 画布扩展颜色下拉（自绘，同单位下拉同一套代码）+ 色块跟随。
     // 选「其它」：已有自定色就直接切过去；没有则弹出面板内取色器（v1.9.13 起
-    // 不再依赖 PS 原生拾色器 —— 它在 UXP 里调不出来）。
+    // 不再依赖 PS 原生拾色器 —— 它在 UXP 里调不出来）。「其它」上边加分割线。
     extPickerApi = buildOptionPicker("canvasExtPicker", EXT_OPTIONS, option => EXT_COLOR_NAMES[option] || option, function (option) {
       if (option === "other" && !canvasCustomColor) {
         toggleExtPopup();
@@ -1302,7 +1333,7 @@ function start() {
       canvasExtension = option;
       renderExtSwatch();
       status("画布扩展颜色：" + (EXT_COLOR_NAMES[option] || option) + "。");
-    });
+    }, ["other"]);
     renderExtSwatch();
     // 色块可点：弹出面板内取色器（stopPropagation 防止 document 级收起把它关掉）。
     el("canvasExtSwatch").addEventListener("click", function (event) {
