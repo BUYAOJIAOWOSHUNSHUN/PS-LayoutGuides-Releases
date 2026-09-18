@@ -213,37 +213,84 @@ function createPhotoshopHost(ps) {
       }
       return result;
     },
-    // 调起 PS 自带拾色器（v1.9.11，老大要求色块点了要弹窗）：走「设置前景色 +
-    // 弹出该命令的对话框」通道 —— set Frgc 的命令 UI 就是拾色器，
-    // batchPlay 的 dialogOptions: "display" 会让它显示出来。
-    // 用当前颜色做起点；确定后读回新前景色，再把前景色**恢复原样**（拾色器
-    // 只是借道，不能真改用户的前景色）。取消返回 null。
-    async showColorPicker(startRGB) {
-      const original = this.getForegroundRGB();
-      const colorDesc = {
+    // 调起 PS 自带拾色器（v1.9.11 引入，v1.9.12 重写）：借「设置前景色」命令的
+    // 对话框 —— set 命令的 UI 就是拾色器，dialogOptions: "display" 让它弹出来。
+    // v1.9.11 真机报「命令"设置"当前不可用」：当时用的经典 Clr/Frgc 属性引用形态
+    // 在 UXP 里不被认，而且也没探测过「要不要 modal」。v1.9.12 改成**组合探测**：
+    //   形态0 = 现代 form：foregroundColor 属性 + application 引用（UXP 文档写法）
+    //   形态1 = 经典 form：Clr 类的 Frgc 属性（ExtendScript 时代写法）
+    //   × 不带 modal / 带 modal
+    // 先用 dontDisplay 静默探测（失败 PS 不弹窗），哪个组合可用就记住，再用它
+    // 以 display 正式调起拾色器；确定后读回新前景色，随后**恢复原前景色**
+    // （拾色器只是借道，不能真改用户的前景色）。取消 / 不可用返回 null。
+    pickerFormIndex: -1,
+    pickerInModal: false,
+    pickerDescriptor(form, rgb, dialogMode) {
+      if (form === 0) {
+        return {
+          _obj: "set",
+          _target: [{ _property: "foregroundColor" },
+                    { _ref: "application", _enum: "ordinal", _value: "targetEnum" }],
+          to: { _obj: "RGBColor", red: rgb.r, grain: rgb.g, blue: rgb.b,
+                hexValue: ((1 << 24) + (rgb.r << 16) + (rgb.g << 8) + rgb.b).toString(16).slice(1).toUpperCase() },
+          _options: { dialogOptions: dialogMode }
+        };
+      }
+      return {
         _obj: "set",
         _target: [{ _ref: "Clr ", _property: "Frgc" }],
-        to: { _obj: "RGBColor", red: startRGB.r, grain: startRGB.g, blue: startRGB.b },
-        _options: { dialogOptions: "display" }
+        to: { _obj: "RGBColor", red: rgb.r, grain: rgb.g, blue: rgb.b },
+        _options: { dialogOptions: dialogMode }
       };
-      const restore = original
-        ? [{ _obj: "set", _target: [{ _ref: "Clr ", _property: "Frgc" }],
-             to: { _obj: "RGBColor", red: original.r, grain: original.g, blue: original.b },
-             _options: { dialogOptions: "dontDisplay" } }]
-        : [];
-      let picked = null;
-      try {
-        await ps.core.executeAsModal(async () => {
-          await ps.action.batchPlay([colorDesc], {});
-          // 确定后前景色 = 所选颜色，**趁恢复之前**读回来（finally 里就还原了）。
-          picked = this.getForegroundRGB();
-        }, { commandName: "选择颜色", timeOut: 1 });
-      } catch (error) {
-        return null;   // 用户取消（或 PS 不让弹）→ 保持原样
-      } finally {
-        if (restore.length) {
-          try { await ps.action.batchPlay(restore, {}); } catch (_) {}
+    },
+    async restoreForeground(rgb) {
+      if (!rgb) return;
+      try { await ps.action.batchPlay([this.pickerDescriptor(0, rgb, "dontDisplay")], {}); } catch (_) {}
+      try { await ps.action.batchPlay([this.pickerDescriptor(1, rgb, "dontDisplay")], {}); } catch (_) {}
+    },
+    async showColorPicker(startRGB) {
+      const original = this.getForegroundRGB();
+      // 1) 静默探测可用组合（失败不弹窗）：改 FG → 没抛错就算可用 → 恢复 FG。
+      if (this.pickerFormIndex < 0) {
+        const attempts = [
+          { form: 0, modal: false }, { form: 1, modal: false },
+          { form: 0, modal: true }, { form: 1, modal: true }
+        ];
+        for (const att of attempts) {
+          let ok = false;
+          try {
+            if (att.modal) {
+              await ps.core.executeAsModal(async () => {
+                await ps.action.batchPlay([this.pickerDescriptor(att.form, startRGB, "dontDisplay")], {});
+              }, { commandName: "选择颜色", timeOut: 1 });
+            } else {
+              await ps.action.batchPlay([this.pickerDescriptor(att.form, startRGB, "dontDisplay")], {});
+            }
+            ok = true;
+          } catch (_) {}
+          if (original) await this.restoreForeground(original);
+          if (ok) { this.pickerFormIndex = att.form; this.pickerInModal = att.modal; break; }
         }
+        if (this.pickerFormIndex < 0) return null;   // 全部形态都不行：拾色器不可用
+      }
+      // 2) 用探测到的组合正式调起拾色器；确定 → 读回所选颜色；取消 → null。
+      let picked = null;
+      const displayDesc = this.pickerDescriptor(this.pickerFormIndex, startRGB, "display");
+      try {
+        if (this.pickerInModal) {
+          await ps.core.executeAsModal(async () => {
+            await ps.action.batchPlay([displayDesc], {});
+            // 确定后前景色 = 所选颜色，趁恢复之前读回来。
+            picked = this.getForegroundRGB();
+          }, { commandName: "选择颜色", timeOut: 1 });
+        } else {
+          await ps.action.batchPlay([displayDesc], {});
+          picked = this.getForegroundRGB();
+        }
+      } catch (error) {
+        picked = null;
+      } finally {
+        await this.restoreForeground(original);
       }
       return picked;
     },
@@ -312,11 +359,16 @@ function createPhotoshopHost(ps) {
           red: extensionColor.r, grain: extensionColor.g, blue: extensionColor.b
         };
       }
+      // v1.9.12 修真机弹原生对话框：之前这条 batchPlay 忘了带 dialogOptions，
+      // PS 2019+ 对参数不合意的「画布大小」直接弹出原生对话框让用户填，
+      // 面板里的「确认修改」就变成打开 PS 对话框了。dontDisplay 强制静默，
+      // 参数真有问题就报错走下面的回退，绝不再弹窗。
+      desc._options = { dialogOptions: "dontDisplay" };
       try {
         await ps.action.batchPlay([desc], {});
         return true;
       } catch (error) {
-        // 带颜色失败（例如文档没有背景层时扩展颜色本就不可用）→ 先退一次
+        // 带颜色失败（例如扩展颜色键不被这版 PS 认）→ 先退一次
         // 不带颜色的 AM；再失败退 DOM 的 resizeCanvas。保证「改画布」优先于颜色。
         if (extensionColor) {
           const plain = Object.assign({}, desc);
