@@ -1066,6 +1066,7 @@ async function installUpdate() {
     setUpdateStatus("已更新 " + count + " 个文件。请完全退出并重启 Photoshop，新版本才会生效。");
     pendingUpdate = null;
     el("installUpdate").className = "primary hidden";
+    showReleaseButton(false);   // 安装成功后收起「打开发布页」（之前忘了收，成功后还挂在页脚，用户误以为更新失败）
   } catch (error) {
     console.error(error);
     // 常见于插件目录不可写（例如在 C:\Program Files 下）。保留发布页入口让用户手动覆盖。
