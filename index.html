@@ -8,9 +8,11 @@
 <body>
   <div class="panel">
     <header class="toolbar">
-      <div class="heading">品牌版式标准规范</div>
-      <!-- 状态条从页脚搬到标题下面：页脚要压到最薄，而状态是每次操作都要看的东西。 -->
-      <div id="status" role="status" aria-live="polite">正在启动插件…</div>
+      <!-- 状态条和标题同一行，右对齐（老大要求）：既省一行高度，操作反馈又一眼能看到。 -->
+      <div class="heading-row">
+        <div class="heading">品牌版式标准规范</div>
+        <div id="status" role="status" aria-live="polite">正在启动插件…</div>
+      </div>
       <div class="brand-block">
         <div id="brandRow" class="brand-row" aria-label="品牌标准"></div>
       </div>
@@ -27,53 +29,79 @@
       </div>
 
       <section id="pageScreen" class="page">
-        <!-- 原来的「尺寸与比例」模块整个被这两个编辑器替代：图片大小 / 画布大小。
-             两张卡**左右并排**（不是上下堆），各带自己的标题和「确认修改」按钮。
-             面板定宽 420px，一张卡约 194px，所以单位列必须用短写法
-             （像素 / PPI / 厘米），全称放在 title 里悬停可见。 -->
+        <!-- 图片大小 / 画布大小：照 PS 官方对话框的排版 —— **标签在输入框上方**，
+             单位是输入框右侧的下拉（sp-picker：像素/英寸/厘米/毫米/点/派卡）。
+             一张卡一个单位下拉，控制宽度/高度两行（分辨率固定 PPI）。
+             锁链挪到标题行右端（窄卡放不下 PS 那种两行之间的链条位）；
+             画布卡的 9 格锚点也在标题行右端。两张卡仍左右并排。 -->
         <div class="size-columns">
-          <!-- 图片大小：模仿 PS「图像大小」对话框：锁链 + 宽/高/分辨率 + 确认修改 -->
+          <!-- 图片大小：模仿 PS「图像大小」对话框 -->
           <div class="parameter-card size-card">
-            <div class="size-card-title">图片大小</div>
-            <div class="size-row">
+            <div class="size-card-title-row">
+              <span class="size-card-title">图片大小</span>
               <span id="imageLock" class="size-lock locked" role="button" tabindex="0" aria-pressed="true" aria-label="锁定宽高比" title="锁定宽高比（点一下可解锁）">
                 <img class="icon-chain" src="assets/icon-chain.png" alt="锁链">
               </span>
-              <span class="size-label">宽</span>
-              <span id="imageWidth" class="size-value" role="textbox" tabindex="0" aria-label="图片宽度">0</span>
-              <span class="size-unit" title="像素">像素</span>
             </div>
-            <div class="size-row">
-              <span class="size-lock placeholder"></span>
-              <span class="size-label">高</span>
-              <span id="imageHeight" class="size-value" role="textbox" tabindex="0" aria-label="图片高度">0</span>
-              <span class="size-unit" title="像素">像素</span>
+            <div class="size-field">
+              <span class="size-field-label">宽度</span>
+              <div class="size-input-row">
+                <span id="imageWidth" class="size-value" role="textbox" tabindex="0" aria-label="图片宽度">0</span>
+                <sp-picker id="imageUnitPicker" class="unit-picker" aria-label="图片大小单位">
+                  <sp-menu-item value="px" selected>像素</sp-menu-item>
+                  <sp-menu-item value="in">英寸</sp-menu-item>
+                  <sp-menu-item value="cm">厘米</sp-menu-item>
+                  <sp-menu-item value="mm">毫米</sp-menu-item>
+                  <sp-menu-item value="pt">点</sp-menu-item>
+                  <sp-menu-item value="pc">派卡</sp-menu-item>
+                </sp-picker>
+              </div>
             </div>
-            <div class="size-row">
-              <span class="size-lock placeholder"></span>
-              <span class="size-label">分辨率</span>
-              <span id="imageResolution" class="size-value" role="textbox" tabindex="0" aria-label="图片分辨率">0</span>
-              <span class="size-unit" title="像素/英寸">PPI</span>
+            <div class="size-field">
+              <span class="size-field-label">高度</span>
+              <div class="size-input-row">
+                <span id="imageHeight" class="size-value" role="textbox" tabindex="0" aria-label="图片高度">0</span>
+                <span class="size-unit-static" id="imageUnitText">像素</span>
+              </div>
+            </div>
+            <div class="size-field">
+              <span class="size-field-label">分辨率</span>
+              <div class="size-input-row">
+                <span id="imageResolution" class="size-value" role="textbox" tabindex="0" aria-label="图片分辨率">0</span>
+                <span class="size-unit-static" title="像素/英寸">PPI</span>
+              </div>
             </div>
             <div class="size-apply-row">
               <sp-button id="applyImageSize" variant="cta" class="compact-button" disabled><span class="button-label">确认修改</span></sp-button>
             </div>
           </div>
 
-          <!-- 画布大小：模仿 PS「画布大小」对话框：9 格锚点 + 宽/高 + 确认修改 -->
+          <!-- 画布大小：模仿 PS「画布大小」对话框，锚点在标题行右侧 -->
           <div class="parameter-card size-card">
-            <div class="size-card-title">画布大小</div>
-            <div class="size-row">
+            <div class="size-card-title-row">
+              <span class="size-card-title">画布大小</span>
               <div id="anchorGrid" class="anchor-grid" role="radiogroup" aria-label="锚点位置"></div>
-              <span class="size-label">宽</span>
-              <span id="canvasWidth" class="size-value" role="textbox" tabindex="0" aria-label="画布宽度">0</span>
-              <span class="size-unit" title="厘米">厘米</span>
             </div>
-            <div class="size-row">
-              <span class="size-lock placeholder"></span>
-              <span class="size-label">高</span>
-              <span id="canvasHeight" class="size-value" role="textbox" tabindex="0" aria-label="画布高度">0</span>
-              <span class="size-unit" title="厘米">厘米</span>
+            <div class="size-field">
+              <span class="size-field-label">宽度</span>
+              <div class="size-input-row">
+                <span id="canvasWidth" class="size-value" role="textbox" tabindex="0" aria-label="画布宽度">0</span>
+                <sp-picker id="canvasUnitPicker" class="unit-picker" aria-label="画布大小单位">
+                  <sp-menu-item value="px">像素</sp-menu-item>
+                  <sp-menu-item value="in">英寸</sp-menu-item>
+                  <sp-menu-item value="cm" selected>厘米</sp-menu-item>
+                  <sp-menu-item value="mm">毫米</sp-menu-item>
+                  <sp-menu-item value="pt">点</sp-menu-item>
+                  <sp-menu-item value="pc">派卡</sp-menu-item>
+                </sp-picker>
+              </div>
+            </div>
+            <div class="size-field">
+              <span class="size-field-label">高度</span>
+              <div class="size-input-row">
+                <span id="canvasHeight" class="size-value" role="textbox" tabindex="0" aria-label="画布高度">0</span>
+                <span class="size-unit-static" id="canvasUnitText">厘米</span>
+              </div>
             </div>
             <div class="size-apply-row">
               <sp-button id="applyCanvasSize" variant="cta" class="compact-button" disabled><span class="button-label">确认修改</span></sp-button>
@@ -98,12 +126,18 @@
                十字排布：上在上、下在下、左/右分居中间行两侧，锁在正中。
                行结构是普通横向 flex，不能用 CSS Grid（UXP 真机不支持）。 -->
           <div class="bleed-grid">
-            <div class="bleed-cross-row bleed-cross-center">
+            <!-- 锁定按钮在出血区右上角（老大要求）。第一行三段式：占位块 + 上格 + 锁，
+                 两侧等宽，「上」保持视觉居中、锁贴最右。 -->
+            <div class="bleed-cross-row bleed-cross-top">
+              <div class="bleed-cross-spacer"></div>
               <div class="bleed-cell">
                 <span class="bleed-label">上</span>
                 <div class="bleed-input">
                   <span id="bleed-top" class="bleed-value" role="textbox" tabindex="0" aria-label="上出血">0</span><div class="stepper"><div id="step-up-top" class="step-up" role="button" tabindex="0" aria-label="上出血增加 1"><img class="chevron" src="assets/chevron-up.png" alt=""></div><div id="step-down-top" class="step-down" role="button" tabindex="0" aria-label="上出血减少 1"><img class="chevron" src="assets/chevron-down.png" alt=""></div></div><span class="bleed-unit" id="unit-top">mm</span>
                 </div>
+              </div>
+              <div id="lock" class="lock-button unlocked" role="button" tabindex="0" aria-label="锁定四边同步" aria-pressed="false">
+                <img id="lockIcon" class="icon-lock" src="assets/icon-unlock.png" alt="">
               </div>
             </div>
             <div class="bleed-cross-row bleed-cross-mid">
@@ -112,9 +146,6 @@
                 <div class="bleed-input">
                   <span id="bleed-left" class="bleed-value" role="textbox" tabindex="0" aria-label="左出血">0</span><div class="stepper"><div id="step-up-left" class="step-up" role="button" tabindex="0" aria-label="左出血增加 1"><img class="chevron" src="assets/chevron-up.png" alt=""></div><div id="step-down-left" class="step-down" role="button" tabindex="0" aria-label="左出血减少 1"><img class="chevron" src="assets/chevron-down.png" alt=""></div></div><span class="bleed-unit" id="unit-left">mm</span>
                 </div>
-              </div>
-              <div id="lock" class="lock-button unlocked" role="button" tabindex="0" aria-label="锁定四边同步" aria-pressed="false">
-                <img id="lockIcon" class="icon-lock" src="assets/icon-unlock.png" alt="">
               </div>
               <div class="bleed-cell">
                 <span class="bleed-label">右</span>
@@ -178,13 +209,15 @@
         <div class="update-left">
           <sp-button id="checkUpdate" variant="secondary" class="update-button"><span class="button-label">检查更新</span></sp-button>
           <!-- 版本号跟着「检查更新」走：查更新时一眼能对上「本地是什么版本、远端是什么版本」。 -->
-          <span id="footerVersion" class="footer-version">1.8.5</span>
+          <span id="footerVersion" class="footer-version">1.9</span>
         </div>
+        <!-- 更新状态（发现新版本 / 网络错误等）跟在版本号后面；版权名固定最右。
+             space-between + 状态行 flex:1：状态显示时贴着版本号，收起时版权自然靠右。 -->
+        <div id="updateStatus" class="muted hidden"></div>
         <span class="signature">©蛋生品牌设计</span>
       </div>
       <sp-button id="installUpdate" variant="cta" class="primary hidden">下载并安装更新</sp-button>
       <sp-button id="openRelease" variant="secondary" class="release-button hidden">打开发布页</sp-button>
-      <div id="updateStatus" class="muted hidden"></div>
     </footer>
   </div>
   <script src="bootstrap.js"></script>
