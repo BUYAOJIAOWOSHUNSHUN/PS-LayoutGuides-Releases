@@ -331,6 +331,7 @@ function writeBleedEdit(field, text) {
 // 所以数字、小数点、退格都自己接：只收 [0-9.]，退格删一位，回车提交，Esc 还原。
 // 上下箭头复用已有的 stepBleed。焦点态由 .bleed-value:focus 给底色。
 function onBleedKeydown(field, event) {
+  event.stopPropagation();   // 同上：按键不冒泡
   const key = event.key;
   const valueEl = el("bleed-" + field);
   if (key === "ArrowUp" || key === "ArrowDown") {
@@ -656,6 +657,7 @@ function writeSizeValue(field, text) {
 
 // 与 bleed 编辑同样的「自绘无光标，首键替换」规则；有蓝色选中时敲键 = 整个替换。
 function onSizeKeydown(field, event) {
+  event.stopPropagation();   // 别让按键在面板内部继续冒泡（按键守卫在外层已拦过 PS 本体）
   const key = event.key;
   const valueEl = el(field);
   if (key === "Enter") { event.preventDefault(); clearSelection(valueEl); el(field).blur(); return; }
@@ -1078,10 +1080,30 @@ async function installUpdate() {
   }
 }
 
+/* ---------- 按键守卫：拦截透传给 Photoshop 本体的按键 ---------- */
+// 真机实测：在自绘数值框里打数字，UXP 会把同一批按键透传给 PS 本体，
+// 图层面板的「不透明度」被当成快捷输入跟着变（打个 0 就变 0%）。
+// 守卫：只要焦点在某个自绘数值框上，就在文档**捕获层** preventDefault 截住全部按键。
+// 只拦不 stopPropagation —— 面板自己的键盘逻辑（字段 keydown 处理器）照常收到事件。
+let keyGuardInstalled = false;
+
+function installKeyGuard() {
+  if (keyGuardInstalled) return;
+  keyGuardInstalled = true;
+  const swallow = function (event) {
+    if (sizeFocus === null && caretState.valueEl === null) return;   // 没在编辑任何数值框就不拦
+    event.preventDefault();
+  };
+  document.addEventListener("keydown", swallow, true);
+  document.addEventListener("keyup", swallow, true);
+  document.addEventListener("keypress", swallow, true);
+}
+
 /* ---------- 生命周期 ---------- */
 
 function start() {
   if (!initialized) {
+    installKeyGuard();
     // 版本号只出现在标题后面。页脚那个 #versionText 已删掉，避免同一个号显示两遍。
     // 版本号带 v 前缀显示（用户要求：v1.9 这种格式）。
     el("footerVersion").textContent = "v" + VERSION;
