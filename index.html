@@ -98,7 +98,17 @@
                 <span class="size-unit-static" id="canvasUnitText">厘米</span>
               </div>
             </div>
+            <div class="size-field">
+              <span class="size-field-label">画布扩展颜色</span>
+              <!-- 自绘下拉（和单位下拉同一套代码）：前景 / 背景 / 白色 / 黑色 / 灰色。
+                   PS 对话框里还有「其它…」会打开 PS 取色器 —— UXP 没有取色器接口，做不了。 -->
+              <div class="size-input-row">
+                <div id="canvasExtPicker" class="unit-picker" role="button" tabindex="0" aria-label="画布扩展颜色" data-value="white"></div>
+                <span id="canvasExtSwatch" class="ext-swatch" title="扩展区域的填充颜色"></span>
+              </div>
+            </div>
             <div class="size-apply-row">
+              <sp-button id="restoreCanvasSize" variant="secondary" class="quiet-button" title="放弃当前输入，恢复为文档的实际数值"><span class="button-label">还原</span></sp-button>
               <sp-button id="applyCanvasSize" variant="cta" class="compact-button" disabled><span class="button-label">确认修改</span></sp-button>
             </div>
           </div>
@@ -205,7 +215,7 @@
         <div class="update-left">
           <sp-button id="checkUpdate" variant="secondary" class="update-button"><span class="button-label">检查更新</span></sp-button>
           <!-- 版本号跟着「检查更新」走：查更新时一眼能对上「本地是什么版本、远端是什么版本」。 -->
-          <span id="footerVersion" class="footer-version">v1.9.8</span>
+          <span id="footerVersion" class="footer-version">v1.9.9</span>
         </div>
         <!-- 更新状态（发现新版本 / 网络错误等）跟在版本号后面；版权名固定最右。
              space-between + 状态行 flex:1：状态显示时贴着版本号，收起时版权自然靠右。 -->
