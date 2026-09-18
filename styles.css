@@ -1,92 +1,176 @@
-/* UXP 面板：Flex + 明确外边距；不依赖 grid、gap 或绝对定位。 */
-html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #24262a; color: #edf0f4; font-family: Arial, "Microsoft YaHei", sans-serif; font-size: 13px; }
+/* UXP 面板：Flex + 明确外边距；不依赖 grid、gap 或绝对定位。
+
+   配色全部取自 Photoshop 自己的界面色（2026-09-18 从真机截图里逐像素采样得到）：
+     #323232  面板背景      #262626  面板标签栏/深色面     #2b2b2b  次级面
+     #a2a2a2  次要文字      #1473e6  强调蓝
+   之前用的是偏蓝的灰（#24262a / #2b2e33 / #292c31），所以面板看着不像 PS 的一部分。
+   现在统一成中性灰，层级关系保持不变：面板底 < 卡片 < 输入框。 */
+html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #262626; color: #e0e0e0; font-family: Arial, "Microsoft YaHei", sans-serif; font-size: 13px; }
 .panel { display: flex; flex-direction: column; width: 100%; height: 100%; min-width: 0; overflow: hidden; }
 .hidden { display: none !important; }
-.toolbar { display: flex; flex-direction: column; flex-shrink: 0; padding: 16px 16px 0; background: #292c31; border-bottom: 1px solid #41464e; }
-.heading { display: flex; align-items: center; justify-content: space-between; font-size: 16px; font-weight: 600; margin-bottom: 14px; }
-.version { color: #aeb8c4; font-size: 11px; font-weight: 400; margin-left: 8px; }
+.toolbar { display: flex; flex-direction: column; flex-shrink: 0; padding: 10px 14px 0; background: #2b2b2b; border-bottom: 1px solid #3a3a3a; }
+/* 版本号跟在标题**后面**（不再被 space-between 推到最右），所以用 flex-start 靠左排列。 */
+.heading { display: flex; align-items: center; justify-content: flex-start; font-size: 16px; font-weight: 600; margin-bottom: 6px; }
+/* 版本号现在显示在页脚「检查更新」旁边（.footer-version），标题后不再重复。 */
+.footer-version { color: #a2a2a2; font-size: 10px; line-height: 24px; flex-shrink: 0; margin-left: 8px; }
+
+/* 状态条：操作结果反馈。原来在页脚，但页脚要压到最薄、而状态是每次操作都要看的东西，
+   所以搬到标题下面。max-height 兜住超长错误（长 URL 曾把整块撑变形）。 */
+#status { display: block; margin: 0 0 8px; padding: 3px 7px; font-size: 11px; line-height: 15px; color: #cfcfcf; background: #333333; border-radius: 4px; overflow-wrap: break-word; word-break: break-all; max-height: 46px; overflow-y: auto; }
+#status.error { color: #ffb4a0; background: #3d2b26; }
 
 /* 品牌图形统一按同一宽度对齐（高度写在 brands.js），图形与文字之间只留 5px。 */
-.brand-block { margin-bottom: 14px; }
+.brand-block { margin-bottom: 9px; }
 .brand-row { display: flex; flex-direction: row; }
-.brand-button { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center; height: 40px; padding: 0 4px; margin-right: 8px; border-radius: 5px; background: #31353b; border: 1px solid #464c55; box-sizing: border-box; }
+.brand-button { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center; height: 40px; padding: 0 4px; margin-right: 7px; border-radius: 5px; background: #333333; border: 1px solid #454545; box-sizing: border-box; }
 .brand-button:last-child { margin-right: 0; }
-.brand-button.active { background: #30445f; border-color: #729fda; }
-.brand-button.unavailable { background: #2c3035; border-color: #3d424b; }
+.brand-button.active { background: #1f4f86; border-color: #1473e6; }
+.brand-button.unavailable { background: #2a2a2a; border-color: #3a3a3a; }
 .brand-mark { display: block; flex-shrink: 0; margin-right: 5px; }
 .brand-button.unavailable .brand-mark { opacity: 0.48; }
-.brand-name { color: #edf2f9; font-size: 12px; font-weight: 600; white-space: nowrap; }
-.brand-button.unavailable .brand-name { color: #929ba8; }
+.brand-name { color: #e8e8e8; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.brand-button.unavailable .brand-name { color: #808080; }
 .tabs { display: flex; flex-direction: row; }
-.tab { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center; padding: 10px 0 11px; color: #a9b3c0; font-weight: 600; font-size: 13px; border-bottom: 2px solid transparent; }
-.tab.active { color: #f1f5fb; border-bottom-color: #78a9ed; }
-.tab-tag { font-size: 10px; margin-left: 5px; color: #a3b4ca; }
-.tab.active .tab-tag { color: #a5caff; }
+.tab { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center; padding: 7px 0 8px; color: #a2a2a2; font-weight: 600; font-size: 13px; border-bottom: 2px solid transparent; }
+.tab.active { color: #f0f0f0; border-bottom-color: #1473e6; }
+.tab-tag { font-size: 10px; margin-left: 5px; color: #8c8c8c; }
+.tab.active .tab-tag { color: #6fa8ea; }
 
 /* 宽度跟随窗口，只有中间内容滚动。参数区统一最小高度，内容多时自然撑开。 */
-.scroll-content { flex: 1; min-height: 0; min-width: 0; overflow-y: auto; overflow-x: hidden; padding: 14px 16px; }
-.document-card { padding-bottom: 14px; }
+.scroll-content { flex: 1; min-height: 0; min-width: 0; overflow-y: auto; overflow-x: hidden; padding: 10px 14px; }
+.document-card { padding-bottom: 9px; }
 .document-name { font-size: 13px; font-weight: 600; line-height: 19px; overflow-wrap: break-word; }
-.muted, small { display: block; color: #acb5c1; font-size: 11px; line-height: 17px; margin-top: 3px; overflow-wrap: break-word; }
-.page { display: block; min-height: 285px; box-sizing: border-box; }
-.section-heading { display: flex; align-items: center; justify-content: space-between; min-height: 24px; margin-bottom: 8px; }
-.section-title { font-size: 13px; font-weight: 600; color: #e7edf5; }
-.section-caption { font-size: 10px; color: #a0aab8; margin-left: 8px; }
-.parameter-card { display: block; padding: 0 12px; background: #2b2e33; border: 1px solid #404650; border-radius: 6px; box-sizing: border-box; }
-.facts { display: flex; flex-direction: row; flex-wrap: wrap; padding: 9px 0; border-bottom: 1px solid #41464e; }
-.row { display: flex; align-items: center; font-size: 11px; line-height: 17px; }
-.row:first-child { margin-right: 18px; }
-.row span { color: #aab4c1; margin-right: 6px; }
-strong { font-weight: 500; min-width: 0; }
-.metric { padding: 10px 0; border-bottom: 1px solid #40454e; }
-.metric-row { display: flex; align-items: center; justify-content: space-between; min-width: 0; }
-label { color: #cbd3de; font-size: 12px; margin-right: 8px; flex-shrink: 0; }
-.value { font-size: 18px; line-height: 23px; font-weight: 600; color: #e2eeff; text-align: right; overflow-wrap: break-word; }
-.last-metric { border-bottom: none; }
+.muted, small { display: block; color: #a2a2a2; font-size: 11px; line-height: 17px; margin-top: 3px; overflow-wrap: break-word; }
+/* 页面高度由内容自然决定（min-height 会把内容少的屏幕页下方撑出一大段空白）。 */
+.page { display: block; box-sizing: border-box; }
+.section-heading { display: flex; align-items: center; justify-content: space-between; min-height: 20px; margin-bottom: 6px; }
+.section-title { font-size: 13px; font-weight: 600; color: #e0e0e0; }
+.parameter-card { display: block; padding: 0 12px; background: #323232; border: 1px solid #454545; border-radius: 6px; box-sizing: border-box; }
 
-/* 出血：左侧小锁，2×2 数值，各有独立上下箭头。 */
-.unit-switch { display: flex; flex-direction: row; border: 1px solid #545d6a; border-radius: 4px; overflow: hidden; }
-.unit-option { padding: 3px 9px; font-size: 11px; color: #abb5c4; }
-.unit-option.active { background: #425f85; color: #ffffff; }
-.bleed-card { padding: 12px; }
-.bleed-body { display: flex; flex-direction: row; align-items: center; }
-.lock-button { width: 28px; height: 30px; flex-shrink: 0; margin-right: 8px; display: flex; align-items: center; justify-content: center; background: #353a42; border: 1px solid #505867; border-radius: 4px; box-sizing: border-box; }
-.lock-button.locked { background: #4b4333; border-color: #bfa36c; }
+/* 出血：左侧小锁，2×2 数值，每个数值后面跟着一对上下箭头。 */
+.unit-switch { display: flex; flex-direction: row; border: 1px solid #545454; border-radius: 4px; overflow: hidden; }
+.unit-option { padding: 3px 9px; font-size: 11px; color: #a2a2a2; }
+.unit-option.active { background: #1473e6; color: #ffffff; }
+.bleed-card { padding: 10px 12px; }
+/* 锁定按钮放在十字正中（中间行左/右之间）：位置即含义 —— 锁住时四边联动。
+   32×32 比数值框略高一点，作为十字的视觉中心。 */
+.lock-button { width: 32px; height: 32px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: #3a3a3a; border: 1px solid #4f4f4f; border-radius: 4px; box-sizing: border-box; }
+.lock-button.locked { background: #4a3f2a; border-color: #b89a5e; }
 /* 锁图标：锁定 = 闭合锁（亮黄），解锁 = 开口锁（灰蓝）。两个状态各一张 PNG，只切 src。 */
 .icon-lock { display: block; width: 20px; height: 20px; flex-shrink: 0; }
-.bleed-grid { flex: 1; min-width: 0; display: flex; flex-direction: row; flex-wrap: wrap; }
-.bleed-cell { width: 50%; min-width: 0; display: flex; align-items: center; padding: 4px 0; box-sizing: border-box; }
-.bleed-cell:nth-child(odd) { padding-right: 4px; }
-.bleed-cell:nth-child(even) { padding-left: 4px; }
-.bleed-label { width: 17px; color: #cbd3de; font-size: 12px; flex-shrink: 0; }
-.bleed-input { flex: 1; min-width: 0; height: 36px; display: flex; align-items: center; border: 1px solid #606a79; border-radius: 4px; background: #3f4650; box-sizing: border-box; overflow: hidden; }
-/* UXP 的 sp-textfield 是黑盒，内部底色写死成 Spectrum 的 gray-50（#080808 近黑），
-   之前用 --spectrum-textfield-background-color: transparent 盖不掉，真机上就是一块黑。
-   官方文档里 sp-textfield 支持 quiet 变体（无底无框），加上它底色才透得出这层浅灰。 */
-.bleed-input sp-textfield { flex: 1; width: 0; min-width: 0; height: 34px; min-height: 34px; margin: 0; padding: 0; border: none; color: #eef3fa; background: transparent; --spectrum-textfield-border-color: transparent; --spectrum-textfield-background-color: transparent; }
-.bleed-unit { font-size: 10px; color: #d3dae4; flex-shrink: 0; margin: 0 6px 0 2px; }
-/* 步进箭头放在数值**前面**。图标走 PNG —— CSS 的 border 三角在 UXP 里画不出斜接，
-   真机上只剩一条横杠，就是「图标显示不全」的原因。 */
-.stepper { display: flex; flex-direction: column; width: 24px; height: 34px; flex-shrink: 0; border-right: 1px solid #5b6371; }
-.step-up, .step-down { display: flex; flex: 1; align-items: center; justify-content: center; background: #4a5260; }
-.step-up { border-bottom: 1px solid #5b6371; border-radius: 3px 0 0 0; }
-.step-down { border-radius: 0 0 0 3px; }
+/* 十字排布：上 / 左·锁·右 / 下 三行，方位直觉跟画布一致。
+   行是普通横向 flex（UXP 不支持 CSS Grid）：
+   上下两行 justify-content:center 居中，中间行 space-between 把左右两格推向两边、锁落在正中。 */
+.bleed-grid { min-width: 0; display: flex; flex-direction: column; }
+.bleed-cross-row { display: flex; flex-direction: row; }
+.bleed-cross-center { justify-content: center; }
+.bleed-cross-mid { justify-content: space-between; align-items: center; }
+.bleed-cell { min-width: 0; display: flex; align-items: center; padding: 3px 0; box-sizing: border-box; }
+.bleed-cross-mid .bleed-cell + .bleed-cell { margin-left: 12px; }
+.bleed-label { width: 17px; color: #c8c8c8; font-size: 12px; flex-shrink: 0; }
+
+/* 数值框是**自绘**的：一个 span + 键盘事件，不是 sp-textfield。
+   UXP 的 sp-textfield 内部底色写死（真机实测 #1e1e1e），
+   --spectrum-textfield-background-color 盖不掉、quiet 变体也只去了边框，
+   外面套浅灰容器就会变成「灰框里挖了个黑洞」。自绘之后这层灰才真的说了算。
+   宽度固定 40px：填「4.8」这种值用不了那么长，也正好把整行压窄。 */
+.bleed-input { display: flex; align-items: center; height: 30px; flex-shrink: 0; border: 1px solid #5a5a5a; border-radius: 4px; background: #3c3c3c; box-sizing: border-box; overflow: hidden; }
+/* 焦点态：自绘控件没有原生焦点框，JS 在聚焦时给容器加 .focused（UXP 不可靠支持 :focus-within）。
+   亮蓝边 + 提亮底色，跟 PS 对话框的输入框一致。 */
+.bleed-input.focused { border-color: #4d8dfd; background: #454545; }
+.bleed-value { display: block; width: 40px; padding: 0 6px; font-size: 12px; line-height: 16px; color: #e8e8e8; text-align: right; white-space: nowrap; overflow: hidden; }
+/* 焦点态：自绘控件没有原生焦点框，自己给一个，否则用户不知道正在编辑哪一格。 */
+.bleed-value:focus { background: transparent; color: #ffffff; }
+.bleed-unit { font-size: 10px; color: #b8b8b8; flex-shrink: 0; padding: 0 6px 0 4px; }
+/* 步进箭头在数值**后面**。图标走 PNG —— CSS 的 border 三角在 UXP 里画不出斜接，
+   真机上只剩一条横杠，就是之前「图标显示不全」的原因。 */
+.stepper { display: flex; flex-direction: column; width: 22px; height: 28px; flex-shrink: 0; border-left: 1px solid #5a5a5a; }
+.step-up, .step-down { display: flex; flex: 1; align-items: center; justify-content: center; background: #4a4a4a; }
+.step-up { border-bottom: 1px solid #5a5a5a; border-radius: 0 3px 0 0; }
+.step-down { border-radius: 0 0 3px 0; }
 .chevron { display: block; width: 10px; height: 6px; flex-shrink: 0; }
-/* 「创建出血线」与左侧状态文字同一条中线：.muted 自带 3px 上边距，这里要抹掉。 */
-.bleed-create-row { display: flex; align-items: center; justify-content: space-between; margin-top: 12px; padding-top: 10px; border-top: 1px solid #424954; }
-.bleed-create-row .muted { margin-top: 0; line-height: 18px; }
-#bleedPreview { margin-top: 8px; font-size: 10px; }
+
+/* 「创建出血线」要和左边那**两行**文字（状态 + 预览）整体上下居中。
+   之前预览行在 .bleed-create-row 外面，按钮只能对着单行状态居中，看着就偏上。
+   现在两行一起包进 .bleed-create-info，按钮才真的居中。 */
+.bleed-create-row { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; padding-top: 9px; border-top: 1px solid #454545; }
+/* 清零 + 创建出血线 两个按钮并排，中间留 8px。 */
+.bleed-create-row sp-button + sp-button { margin-left: 8px; }
+.bleed-create-info { flex: 1; min-width: 0; margin-right: 10px; }
+.bleed-create-row .muted { margin-top: 0; line-height: 16px; }
+#bleedPreview { margin-top: 2px; font-size: 10px; }
+/* 清零是低频兜底操作，弱化成灰字小按钮；创建出血线是主操作，加大加高突出。 */
+sp-button.quiet-button { width: 56px; min-width: 56px; height: 26px; min-height: 26px; margin: 0; }
+sp-button.quiet-button .button-label { font-size: 11px; font-weight: 400; color: #b8b8b8; }
+sp-button.wide-cta { width: 120px; min-width: 120px; height: 32px; min-height: 32px; }
+sp-button.wide-cta .button-label { font-size: 13px; }
 
 /* 统一按钮：三个生成按钮相同全宽、36px 高，8px 间距。 */
 sp-button { display: flex; align-items: center; justify-content: center; text-align: center; box-sizing: border-box; margin: 0; flex-shrink: 0; }
 .button-label { display: block; white-space: nowrap; font-size: 12px; font-weight: 600; line-height: 18px; }
-.guide-section { margin-top: 12px; }
+
+/* 图片大小 / 画布大小 卡片 —— 模仿 PS 的「图像大小 / 画布大小」对话框。
+   两张卡**左右并排**：面板定宽 420px，各占一半（约 194px），
+   所以标签和单位都不写死宽度，让数值框吃掉剩下的空间。
+   align-items: stretch 让矮的那张（画布大小只有 2 行）跟高的一样高。 */
+.size-columns { display: flex; align-items: stretch; }
+.size-columns > .size-card { flex: 1; min-width: 0; }
+.size-columns > .size-card + .size-card { margin-left: 8px; }
+/* 卡片自己是纵向 flex，配合 .size-apply-row 的 margin-top:auto
+   把「确认修改」压到底 —— 两张卡行数不同（3 行 vs 2 行），
+   不这么写两个按钮就会一高一低。 */
+.size-card { padding: 6px 8px 8px; display: flex; flex-direction: column; }
+.size-card-title { font-size: 11px; font-weight: 600; color: #c8c8c8; padding: 4px 0 8px; border-bottom: 1px solid #454545; }
+/* 行高用 min-height 而不是写死 30px：画布大小第一行放的是 34px 的锚点网格，
+   写死高度会让它溢出到卡片标题上（第一版 60×60 直接把「画布大小」标题盖住了）。 */
+.size-row { display: flex; align-items: center; min-height: 34px; }
+.size-lock { width: 28px; height: 24px; flex-shrink: 0; margin-right: 8px; display: flex; align-items: center; justify-content: center; background: #3a3a3a; border: 1px solid #4f4f4f; border-radius: 4px; box-sizing: border-box; cursor: pointer; }
+.size-lock.locked { background: #4a3f2a; border-color: #b89a5e; }
+/* 不放图标的占位行，用 placeholder 撑住对齐，保证「宽/高/分辨率」三行的数值框左边缘在同一条线上。 */
+.size-lock.placeholder { background: transparent; border: none; cursor: default; }
+.icon-chain { display: block; width: 18px; height: 18px; flex-shrink: 0; }
+/* 标签定宽 38px：「分辨率」三个字最宽（12px×3=36px），不定宽的话
+   同一张卡里第三行的数值框会比前两行往右错开一截。 */
+.size-label { width: 38px; color: #c8c8c8; font-size: 12px; flex-shrink: 0; margin-right: 4px; }
+.size-value { display: block; flex: 1; min-width: 0; height: 24px; padding: 0 6px; font-size: 12px; line-height: 24px; color: #e8e8e8; text-align: right; background: #3c3c3c; border: 1px solid #5a5a5a; border-radius: 4px; white-space: nowrap; overflow: hidden; box-sizing: border-box; }
+/* 焦点态：亮蓝边框 + 提亮底色（PS 对话框风格）。闪烁光标由 JS 插入 .caret 元素实现。 */
+.size-value:focus { background: #454545; color: #ffffff; border-color: #4d8dfd; }
+/* 闪烁光标：JS 在聚焦时把 1px 竖线插到文本末尾，定时器切换 visibility 模拟闪烁
+   （自绘 span 没有原生光标，UXP 也没有可用的透明文本输入控件）。 */
+.caret { display: inline-block; width: 1px; height: 13px; margin-left: 1px; background: #e8e8e8; }
+.caret.off { visibility: hidden; }
+/* 拖拽全选：数值按字符拆成 .ch，选中区间加蓝底白字（PS 输入框选中风格）。 */
+.ch { display: inline; }
+.ch.sel { background: #1473e6; color: #ffffff; }
+/* 并排后一列只有 ~178px，单位必须短（像素 / PPI / 厘米），全称放 title 里。 */
+.size-unit { flex-shrink: 0; padding-left: 5px; font-size: 11px; color: #b8b8b8; box-sizing: border-box; }
+/* 确认修改行：右对齐的按钮；margin-top:auto 让它贴卡片底部。 */
+.size-apply-row { display: flex; justify-content: flex-end; padding-top: 8px; margin-top: auto; border-top: 1px solid #454545; }
+
+/* 锚点 9 格选择器：3×3 网格，跟 PS「画布大小」对话框一样的布局。
+   **不能用 display:grid** —— UXP 真机不支持 CSS Grid（浏览器预览是 Chrome 看不出来），
+   真机上 9 格直接塌掉，把「宽」行的槽宽挤没，两行数值框就错位了。
+   改成三层嵌套 flex（容器纵向 3 行、每行横向 3 格），UXP 稳定支持。
+   格子 10px，内区 32px，3 格只占 30px，剩下的 2px 由 space-between
+   撑成 1px 缝隙，缝隙露出容器底色 #5a5a5a，就是格线。
+   34 + margin-right 2 = 36，正好和 .size-lock（28 + 8）占一样的槽宽，
+   两张卡里数值框的左边缘才会落在同一条线上。box-sizing 必须是 border-box，
+   否则 1px 边框会额外撑宽 2px，又对不齐了。 */
+.anchor-grid { width: 34px; height: 34px; padding: 1px; box-sizing: border-box; flex-shrink: 0; margin-right: 2px; display: flex; flex-direction: column; justify-content: space-between; background: #5a5a5a; border: 1px solid #4f4f4f; border-radius: 4px; overflow: hidden; }
+.anchor-row { display: flex; flex-direction: row; justify-content: space-between; }
+.anchor-cell { width: 10px; height: 10px; background: #3a3a3a; cursor: pointer; }
+.anchor-cell:hover { background: #4a4a4a; }
+.anchor-cell.active { background: #1473e6; }
+.guide-section { margin-top: 10px; }
 .guide-actions { display: flex; flex-direction: column; }
 sp-button.guide-button { width: 100%; min-width: 0; height: 36px; min-height: 36px; margin-top: 8px; }
 sp-button.guide-button:first-child { margin-top: 0; }
-sp-button.compact-button { width: 102px; min-width: 102px; height: 32px; min-height: 32px; }
+/* margin 显式清零：UXP 给 sp-button 内置 auto 外边距（预览的 Chrome 没有），
+   定宽按钮在 flex 行里会被 auto margin 推离预定位置，真机上「确认修改」
+   就是不这样才没贴住右边（与 .update-button 同一个坑）。 */
+sp-button.compact-button { width: 96px; min-width: 96px; height: 30px; min-height: 30px; margin: 0; }
 sp-button.compact-button .button-label { font-size: 12px; }
-.bottom-actions { display: flex; flex-direction: row; padding-top: 14px; margin-top: 14px; border-top: 1px solid #424954; }
+.bottom-actions { display: flex; flex-direction: row; padding-top: 10px; margin-top: 10px; border-top: 1px solid #454545; }
 sp-button.utility-button { flex: 1; width: 0; min-width: 0; height: 36px; min-height: 36px; padding: 0 6px; }
 sp-button.utility-button:first-child { margin-right: 8px; }
 /* UXP 里的 sp-button 是黑盒，不能指望它内部是横向 flex。
@@ -95,25 +179,25 @@ sp-button.utility-button:first-child { margin-right: 8px; }
    所以图标 + 文字统一包进 .button-inner，横排由我们自己说了算。 */
 .button-inner { display: flex; flex-direction: row; align-items: center; justify-content: center; height: 100%; }
 .utility-button .button-label { margin-left: 8px; font-size: 12px; }
-.delete-note { font-size: 10px; margin-top: 7px; }
 /* 垃圾桶：PNG 图标（原尺寸 14×16 缩小 10%）。改尺寸只改这两个数字。 */
 .icon-trash { display: block; width: 12.6px; height: 14.4px; flex-shrink: 0; }
 .icon-eye { display: block; width: 16px; height: 16px; flex-shrink: 0; }
 sp-button[disabled] .button-label, sp-button[disabled] .icon-trash, sp-button[disabled] .icon-eye { opacity: 0.45; }
-/* 状态条：操作结果反馈。只占一行，太长时强制断词（长 URL 曾把页脚撑变形）。 */
-#status { display: block; margin: 0 0 5px; padding: 4px 8px; font-size: 11px; line-height: 15px; color: #bdd4ef; background: #2a3645; border-radius: 4px; overflow-wrap: break-word; word-break: break-all; }
-#status.error { color: #ffd3c5; background: #46352f; }
 
-/* 更新与版权固定在窗口底部，压成两行：状态条 +「检查更新 / 版本 · 版权」。
-   页脚每多占 10px，上面的功能区就少 10px，所以这里刻意压得很紧；
-   版本号在标题栏已经出现过，页脚不再单独占一格，直接并进版权行右端。
+/* 页脚只留「检查更新 + 版权」，状态条已搬到标题下面，所以这里能压得很薄。
    #updateStatus 默认是空的（隐藏），只有检查/安装更新时才多占一行。 */
-.panel-footer { flex-shrink: 0; padding: 6px 16px; border-top: 1px solid #424954; background: #292c31; max-height: 40%; overflow-y: auto; }
-.update-row { display: flex; align-items: center; min-width: 0; }
-sp-button.update-button { width: 72px; min-width: 72px; height: 24px; min-height: 24px; flex-shrink: 0; }
+.panel-footer { flex-shrink: 0; padding: 5px 14px; border-top: 1px solid #3a3a3a; background: #2b2b2b; max-height: 40%; overflow-y: auto; }
+.update-row { display: flex; flex-direction: row; align-items: center; justify-content: flex-start; width: 100%; min-width: 0; }
+/* 收缩容器：宽度=内容宽，sp-button 内置的 auto 外边距在里面分不到自由空间，
+   按钮+版本号就贴在行首 —— margin:0 压不过 UXP 内部样式（真机实测），
+   结构级包一层才是可靠解法（真机「检查更新」偏右就是这么治好的）。 */
+.update-left { display: flex; flex-direction: row; align-items: center; flex-shrink: 0; min-width: 0; }
+/* margin 必须显式清零：UXP 给 sp-button 内置了 auto 外边距（预览的 Chrome 没有），
+   不清零的话「检查更新」在真机上会被 auto margin 推到行中间偏右，看着就像没左对齐。 */
+sp-button.update-button { width: 72px; min-width: 72px; height: 24px; min-height: 24px; flex-shrink: 0; margin: 0; }
 sp-button.update-button .button-label { font-size: 11px; font-weight: 400; line-height: 16px; }
-.signature { color: #aeb7c4; font-size: 10px; line-height: 16px; flex: 1; min-width: 0; text-align: right; margin-left: 8px; overflow-wrap: break-word; }
+.signature { color: #a2a2a2; font-size: 10px; line-height: 16px; flex: 1; min-width: 0; text-align: right; margin-left: 8px; overflow-wrap: break-word; }
 sp-button.primary, sp-button.release-button { width: 100%; height: 30px; min-height: 30px; margin-top: 6px; }
 /* 错误信息里的超长 URL 必须能断行，否则会把整个页脚挤变形。 */
 #updateStatus { font-size: 10px; line-height: 14px; margin-top: 4px; overflow-wrap: break-word; word-break: break-all; }
-.muted.error-text { color: #ffd3c5; }
+.muted.error-text { color: #ffb4a0; }
