@@ -1,4 +1,4 @@
-# 品牌版式标准规范 PS 插件
+﻿# 品牌版式标准规范 PS 插件
 
 品牌版式标准规范是一款 Adobe Photoshop 面板插件，按品牌标准一键生成**版心线、出血线与 LOGO 高度线**，让不同尺寸、不同分辨率的画布始终套用同一套版式比例。
 
@@ -6,11 +6,11 @@
 
 ## 下载
 
-当前版本 **v1.9.10** · 需要 Photoshop 27.0.0（2026）及以上
+当前版本 **v1.9.11** · 需要 Photoshop 27.0.0（2026）及以上
 
-- [**下载免安装版 ZIP（推荐）**](https://github.com/BUYAOJIAOWOSHUNSHUN/PS-LayoutGuides-Releases/raw/main/.download/PS-LayoutGuides-v1.9.10-portable.zip)
+- [**下载免安装版 ZIP（推荐）**](https://github.com/BUYAOJIAOWOSHUNSHUN/PS-LayoutGuides-Releases/raw/main/.download/PS-LayoutGuides-v1.9.11-portable.zip)
   —— 解压后把整个文件夹放进 Photoshop 的 `Plug-ins` 目录，重启即可，不用安装。
-- [下载安装包 .ccx](https://github.com/BUYAOJIAOWOSHUNSHUN/PS-LayoutGuides-Releases/raw/main/.download/PS-LayoutGuides-v1.9.10.ccx)
+- [下载安装包 .ccx](https://github.com/BUYAOJIAOWOSHUNSHUN/PS-LayoutGuides-Releases/raw/main/.download/PS-LayoutGuides-v1.9.11.ccx)
   —— 双击由 Creative Cloud 安装，可覆盖升级旧版。
 - [查看全部历史版本](https://github.com/BUYAOJIAOWOSHUNSHUN/PS-LayoutGuides-Releases/tags)
 
@@ -40,7 +40,7 @@
 
 - 给插件文件夹单独授权（管理员执行一次，之后一直有效）：
   ```
-  icacls "C:\Program Files\Adobe\Adobe Photoshop 2026\Plug-ins\品牌版式标准规范PS插件-v1.9.10" /grant "%USERNAME%:(OI)(CI)M" /T
+  icacls "C:\Program Files\Adobe\Adobe Photoshop 2026\Plug-ins\品牌版式标准规范PS插件-v1.9.11" /grant "%USERNAME%:(OI)(CI)M" /T
   ```
 - 或者把插件挪到用户级目录：`%APPDATA%\Adobe\UXP\Plugins\External\`
 
