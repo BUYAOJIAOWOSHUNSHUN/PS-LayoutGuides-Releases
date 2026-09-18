@@ -80,137 +80,13 @@ function setDisabled(id, disabled) {
   else element.removeAttribute("disabled");
 }
 
-/* ---------- 自绘数值框公共件：闪烁光标 + 拖拽全选 ---------- */
-// 数值框是自绘 span（UXP 没有可用的透明文本输入控件），原生没有光标也不能选字。
-// 这里按 PS 输入框的样子补齐两件事：
-//   1. 聚焦时在文本末尾插一根 1px 竖线（.caret），定时器切 visibility 模拟闪烁；
-//   2. 数值拆成单字符 span（.ch），按住拖动 / 双击把区间内的字符加蓝底（.sel）。
-// 我们的编辑模型没有光标定位（首键替换、之后追加），所以光标永远在末尾，与模型一致。
-const caretState = { valueEl: null, node: null, timer: null, on: true };
-
-function isCharSpan(node) {
-  return node.className === "ch" || node.className === "ch sel";
-}
-
-function charSpans(valueEl) {
-  const result = [];
-  for (let i = 0; i < valueEl.childNodes.length; i++) {
-    const node = valueEl.childNodes[i];
-    if (node.nodeType === 1 && isCharSpan(node)) result.push(node);
-  }
-  return result;
-}
-
-// 读值 = 拼接所有字符 span（光标 span 没有文本，混进来也无妨）。
-function valueText(valueEl) {
-  return charSpans(valueEl).map(span => span.textContent).join("");
-}
-
-// 重建字符 span；focused=true 时在末尾补光标并重新开始闪烁。
-function renderChars(valueEl, text, focused) {
-  const wasFocused = focused || caretState.valueEl === valueEl;
-  clearChildren(valueEl);
-  const string = String(text);
-  for (let i = 0; i < string.length; i++) {
-    const span = document.createElement("span");
-    span.className = "ch";
-    span.textContent = string.charAt(i);
-    valueEl.appendChild(span);
-  }
-  if (wasFocused) attachCaret(valueEl);
-}
-
-function attachCaret(valueEl) {
-  detachCaret();
-  const caret = document.createElement("span");
-  caret.className = "caret";
-  valueEl.appendChild(caret);
-  caretState.valueEl = valueEl;
-  caretState.node = caret;
-  caretState.on = true;
-  caretState.timer = setInterval(() => {
-    caretState.on = !caretState.on;
-    if (caretState.node) caretState.node.className = caretState.on ? "caret" : "caret off";
-  }, 530);
-}
-
-function detachCaret() {
-  if (caretState.timer) { clearInterval(caretState.timer); caretState.timer = null; }
-  if (caretState.node && caretState.node.parentNode) caretState.node.parentNode.removeChild(caretState.node);
-  caretState.valueEl = null;
-  caretState.node = null;
-  caretState.on = true;
-}
-
-/* 选中区间：每个数值框一份，start === end 表示只有光标点、没有选中。 */
-const valueSelection = new Map();
-
-function applySelection(valueEl) {
-  const selection = valueSelection.get(valueEl);
-  const spans = charSpans(valueEl);
-  const lo = selection ? Math.min(selection.start, selection.end) : 0;
-  const hi = selection ? Math.max(selection.start, selection.end) : 0;
-  for (let i = 0; i < spans.length; i++) spans[i].className = i >= lo && i < hi ? "ch sel" : "ch";
-}
-
-function clearSelection(valueEl) {
-  if (valueSelection.delete(valueEl)) applySelection(valueEl);
-}
-
-function hasSelection(valueEl) {
-  const selection = valueSelection.get(valueEl);
-  return !!selection && selection.start !== selection.end;
-}
-
-// x 落在第几个字符上：优先用每个字符自己的矩形，拿不到矩形就按宽度比例估算。
-function charIndexAt(valueEl, clientX) {
-  const spans = charSpans(valueEl);
-  if (!spans.length) return 0;
-  try {
-    for (let i = 0; i < spans.length; i++) {
-      const rect = spans[i].getBoundingClientRect();
-      if (rect && typeof rect.left === "number" && clientX < rect.left + rect.width / 2) return i;
-    }
-    return spans.length;
-  } catch (error) {
-    try {
-      const box = valueEl.getBoundingClientRect();
-      const perChar = (box.width - 12) / Math.max(1, spans.length);   // 12 ≈ 左右 padding
-      return Math.max(0, Math.min(spans.length, Math.round((clientX - box.left - 6) / perChar)));
-    } catch (_) { return spans.length; }
-  }
-}
-
-// 拖拽选择 + 双击全选。mousemove 只在按住拖动时生效；选中后敲键 = 整个替换（见各 keydown）。
-function wireValueMouse(valueEl) {
-  let dragging = false;
-  let anchor = 0;
-  let lastDown = 0;
-  valueEl.addEventListener("mousedown", event => {
-    const now = Date.now();
-    const doubleClick = now - lastDown < 350;
-    lastDown = now;
-    if (doubleClick) {
-      dragging = false;
-      valueSelection.set(valueEl, { anchor: 0, start: 0, end: charSpans(valueEl).length });
-      applySelection(valueEl);
-      return;
-    }
-    dragging = true;
-    anchor = charIndexAt(valueEl, event.clientX);
-    valueSelection.set(valueEl, { anchor, start: anchor, end: anchor });
-    applySelection(valueEl);
-  });
-  valueEl.addEventListener("mousemove", event => {
-    if (!dragging) return;
-    const index = charIndexAt(valueEl, event.clientX);
-    valueSelection.set(valueEl, { anchor, start: anchor, end: index });
-    applySelection(valueEl);
-  });
-  const endDrag = () => { dragging = false; };
-  valueEl.addEventListener("mouseup", endDrag);
-  valueEl.addEventListener("mouseleave", endDrag);
-}
+/* ---------- 数值输入框：真输入控件 sp-textfield（v1.9.6 起） ---------- */
+// 之前是自绘 span（自带模拟光标、逐字符选区），但 UXP 会把面板里自绘控件收到的
+// 按键**透传给 Photoshop 本体** —— 真机实测：在数值框打数字，图层面板的
+// 「不透明度」被当成快捷输入跟着变。preventDefault 挡不住这层透传。
+// 改用真输入控件后：聚焦期间宿主不再接收按键（官方内置插件同款行为），
+// 光标、拖拽选区也都是原生的。代价是控件内部底色为组件写死的深灰（功能优先）。
+// 读写统一走 readXxx/writeXxx；「确认修改」提交、失焦提交等语义不变。
 
 function disableAll(disabled) {
   for (const id of ALL_BUTTONS) setDisabled(id, disabled);
@@ -301,39 +177,26 @@ function fromDisplay(value) {
   return bleedUnit === "mm" ? value : value * 10;
 }
 
-/* ---------- 自绘数值框 ---------- */
+/* ---------- 出血数值输入（真输入控件 sp-textfield） ---------- */
 
-// 出血数值框不是 sp-textfield，是自己画的 span。
-// 原因：UXP 的 sp-textfield 内部底色写死（真机实测 #1e1e1e），
-// --spectrum-textfield-background-color 盖不掉、quiet 变体也只去了边框，
-// 外面套一层浅灰容器就成了「灰框里挖了个黑洞」。
-// 读写统一走下面两个函数，将来要换回原生输入框只改这里。
+// 编辑语义：输入框就是唯一事实（原生编辑），失焦/回车时读框内值校验提交，
+// Esc 把显示恢复成已提交值。编辑中的旧 editing[] 临时串机制随之删除。
 const editing = {};
 
 function readBleedValue(field) {
-  return valueText(el("bleed-" + field)).trim();
+  return String(el("bleed-" + field).value || "").trim();
 }
 
-// 外部改写（重新渲染 / 步进 / 提交后回写）：丢掉编辑中的临时串与选中态。
 function writeBleedValue(field, text) {
-  renderChars(el("bleed-" + field), text, false);
-  clearSelection(el("bleed-" + field));
+  el("bleed-" + field).value = String(text);
   editing[field] = null;
 }
 
-// 编辑中的临时串：只改显示，不落库；保留光标与选中态由调用方决定。
-function writeBleedEdit(field, text) {
-  renderChars(el("bleed-" + field), text, true);
-  editing[field] = text;
-}
-
-// 自绘输入框的键盘输入。UXP 里除 sp-textfield 外没有可用的文本输入控件，
-// 所以数字、小数点、退格都自己接：只收 [0-9.]，退格删一位，回车提交，Esc 还原。
-// 上下箭头复用已有的 stepBleed。焦点态由 .bleed-value:focus 给底色。
+// 键盘过滤：只放行数字、小数点和导航键，其余一律吞掉——
+// 一方面保证框里永远是合法数字，另一方面（真输入框聚焦时宿主本来就不收按键）
+// 双保险防止误触 PS 快捷键。
 function onBleedKeydown(field, event) {
-  event.stopPropagation();   // 同上：按键不冒泡
   const key = event.key;
-  const valueEl = el("bleed-" + field);
   if (key === "ArrowUp" || key === "ArrowDown") {
     event.preventDefault();
     stepBleed(field, key === "ArrowUp" ? 1 : -1);
@@ -343,46 +206,16 @@ function onBleedKeydown(field, event) {
   if (key === "Escape") {
     event.preventDefault();
     editing[field] = null;
-    clearSelection(valueEl);
     renderBleedInputs();
     updateBleedPreview();
     return;
   }
-  if (key === "Backspace") {
-    event.preventDefault();
-    if (hasSelection(valueEl)) { clearSelection(valueEl); writeBleedEdit(field, "0"); return; }
-    const current = editing[field] == null ? readBleedValue(field) : editing[field];
-    const next = current.slice(0, -1);
-    renderChars(valueEl, next === "" ? "0" : next, true);
-    editing[field] = next;
-    return;
-  }
-  const isDigit = typeof key === "string" && key.length === 1 && key >= "0" && key <= "9";
-  if (isDigit || key === ".") {
-    event.preventDefault();
-    // 自绘控件没有光标，「追加」会让显示 2 时敲 3 变成 23。
-    // 所以**本次编辑的第一个按键替换原值**，之后才是追加 ——
-    // 等价于原生输入框获得焦点时全选，行为可预期。
-    // 有选中（拖拽/双击选的蓝色高亮）时敲键 = 整个替换，跟 PS 的输入框一致。
-    if (hasSelection(valueEl)) {
-      editing[field] = key === "." ? "0." : key;
-    } else if (editing[field] == null) {
-      editing[field] = key === "." ? "0." : key;
-    } else {
-      if (key === "." && editing[field].indexOf(".") >= 0) return;   // 只允许一个小数点
-      editing[field] = editing[field] + key;
-    }
-    renderChars(valueEl, editing[field], true);
-    clearSelection(valueEl);
-  }
+  if (key.length === 1 && !/[0-9.]/.test(key)) event.preventDefault();
 }
 
-// 把编辑中的串提交给 service。空串按 0 处理，不让用户卡在错误态。
-// 没在编辑（editing 为 null）时直接返回 —— 失焦、点步进都会走到这里，不能白跑。
+// 把框内当前值提交给 service。空串按 0 处理，不让用户卡在错误态。
 function commitBleedEdit(field) {
-  if (editing[field] == null) return;
-  const raw = editing[field];
-  editing[field] = null;
+  const raw = readBleedValue(field);
   onBleedInput(field, raw === "" ? "0" : raw);
 }
 
@@ -412,7 +245,7 @@ function renderLockState() {
 }
 
 function stepBleed(field, delta) {
-  const raw = (editing[field] == null ? readBleedValue(field) : editing[field]).trim();
+  const raw = readBleedValue(field).trim();
   const parsed = Number(raw);
   const value = raw && Number.isFinite(parsed) && parsed >= 0 ? parsed : toDisplay(service.bleedMM[field]);
   // 每次增减当前显示单位的 1；允许手填小数，最小为 0。
@@ -431,7 +264,6 @@ function setUnit(unit) {
 
 // 清零按钮：四个出血值全部归 0，只改数值，不动已生成的辅助线。
 function resetBleed() {
-  for (const field of BLEED_FIELDS) editing[field] = null;   // 丢弃没提交的编辑
   service.setBleed({ top: 0, bottom: 0, left: 0, right: 0 });
   renderBleedInputs();
   updateBleedPreview();
@@ -454,7 +286,6 @@ function toggleLock() {
 }
 
 function onBleedInput(field, raw) {
-  editing[field] = null;
   const display = Number(String(raw).trim());
   if (!String(raw).trim() || !Number.isFinite(display) || display < 0) {
     renderBleedInputs();
@@ -647,55 +478,28 @@ const sizeDirty = {};
 let sizeFocus = null;
 
 function readSizeValue(field) {
-  return valueText(el(field)).trim();
+  return String(el(field).value || "").trim();
 }
 
 function writeSizeValue(field, text) {
-  renderChars(el(field), String(text), false);
-  clearSelection(el(field));
+  el(field).value = String(text);
 }
 
-// 与 bleed 编辑同样的「自绘无光标，首键替换」规则；有蓝色选中时敲键 = 整个替换。
+// 真输入框的原生编辑（光标/选区/退格都由控件自己处理），这里只做三件事：
+// Enter = 提交并交还焦点；Esc = 放弃编辑用文档当前值还原；非法字符一律吞掉。
 function onSizeKeydown(field, event) {
-  event.stopPropagation();   // 别让按键在面板内部继续冒泡（按键守卫在外层已拦过 PS 本体）
   const key = event.key;
-  const valueEl = el(field);
-  if (key === "Enter") { event.preventDefault(); clearSelection(valueEl); el(field).blur(); return; }
+  if (key === "Enter") { event.preventDefault(); el(field).blur(); return; }
   if (key === "Escape") {
     // Esc = 放弃这次编辑：清掉编辑标记、交还焦点，再让 refresh() 用文档当前值还原显示。
     event.preventDefault();
     sizeDirty[field] = false;
-    clearSelection(valueEl);
     if (sizeFocus === field) sizeFocus = null;
     el(field).blur();
     refresh(false);
     return;
   }
-  if (key === "Backspace") {
-    event.preventDefault();
-    if (hasSelection(valueEl)) { clearSelection(valueEl); renderChars(valueEl, "0", true); sizeDirty[field] = true; return; }
-    const text = readSizeValue(field);
-    renderChars(valueEl, text.slice(0, -1) || "0", true);
-    sizeDirty[field] = true;
-    return;
-  }
-  const isDigit = typeof key === "string" && key.length === 1 && key >= "0" && key <= "9";
-  if (isDigit || key === ".") {
-    event.preventDefault();
-    const current = readSizeValue(field);
-    let next;
-    // 「本次编辑的第一个按键替换原值」：自绘控件没有光标，没法做到真正的「全选」。
-    // 规则：当前值是默认占位「0」或有蓝色选中就替换，否则追加。简单可预期。
-    if (hasSelection(valueEl) || current === "0") {
-      next = key === "." ? "0." : key;
-    } else {
-      if (key === "." && current.indexOf(".") >= 0) return;     // 只允许一个小数点
-      next = current + key;
-    }
-    renderChars(valueEl, next, true);
-    clearSelection(valueEl);
-    sizeDirty[field] = true;
-  }
+  if (key.length === 1 && !/[0-9.]/.test(key)) event.preventDefault();   // 只允许数字和小数点
 }
 
 // 锁链图标：切换锁定状态，并联动宽高输入框。
@@ -889,7 +693,6 @@ function restoreImageSize() {
   writeSizeValue("imageResolution", Math.round(lastResolution));
   for (const field of ["imageWidth", "imageHeight", "imageResolution"]) {
     sizeDirty[field] = false;
-    clearSelection(el(field));
   }
   if (sizeFocus === "imageWidth" || sizeFocus === "imageHeight" || sizeFocus === "imageResolution") sizeFocus = null;
   status("已还原为文档当前数值。");
@@ -1080,30 +883,10 @@ async function installUpdate() {
   }
 }
 
-/* ---------- 按键守卫：拦截透传给 Photoshop 本体的按键 ---------- */
-// 真机实测：在自绘数值框里打数字，UXP 会把同一批按键透传给 PS 本体，
-// 图层面板的「不透明度」被当成快捷输入跟着变（打个 0 就变 0%）。
-// 守卫：只要焦点在某个自绘数值框上，就在文档**捕获层** preventDefault 截住全部按键。
-// 只拦不 stopPropagation —— 面板自己的键盘逻辑（字段 keydown 处理器）照常收到事件。
-let keyGuardInstalled = false;
-
-function installKeyGuard() {
-  if (keyGuardInstalled) return;
-  keyGuardInstalled = true;
-  const swallow = function (event) {
-    if (sizeFocus === null && caretState.valueEl === null) return;   // 没在编辑任何数值框就不拦
-    event.preventDefault();
-  };
-  document.addEventListener("keydown", swallow, true);
-  document.addEventListener("keyup", swallow, true);
-  document.addEventListener("keypress", swallow, true);
-}
-
 /* ---------- 生命周期 ---------- */
 
 function start() {
   if (!initialized) {
-    installKeyGuard();
     // 版本号只出现在标题后面。页脚那个 #versionText 已删掉，避免同一个号显示两遍。
     // 版本号带 v 前缀显示（用户要求：v1.9 这种格式）。
     el("footerVersion").textContent = "v" + VERSION;
@@ -1121,25 +904,11 @@ function start() {
     bindAction(el("unitCM"), () => setUnit("cm"));
     for (const field of BLEED_FIELDS) {
       const valueEl = el("bleed-" + field);
-      // 自绘数值框没有 change 事件，键盘全部自己接（见 onBleedKeydown）。
+      // 真输入框：原生编辑（光标/选区/退格都是控件自己的），键盘只做过滤和步进（见 onBleedKeydown）。
       valueEl.addEventListener("keydown", event => onBleedKeydown(field, event));
-      // 自绘元素不会自动拿到焦点，点一下补一个 focus()，否则用户点了框打不了字。
-      valueEl.addEventListener("click", () => {
-        try { valueEl.focus(); } catch (error) { console.error("聚焦出血输入框失败:", error); }
-      });
-      // 聚焦：容器亮蓝边 + 闪烁光标；失焦：还原容器、清选中、提交未落库的编辑。
-      valueEl.addEventListener("focus", () => {
-        if (valueEl.parentNode) valueEl.parentNode.className = "bleed-input focused";
-        attachCaret(valueEl);
-      });
-      valueEl.addEventListener("blur", () => {
-        if (valueEl.parentNode) valueEl.parentNode.className = "bleed-input";
-        detachCaret();
-        clearSelection(valueEl);
-        commitBleedEdit(field);
-      });
-      wireValueMouse(valueEl);
-      valueEl.setAttribute("title", BLEED_LABELS[field] + "出血：点一下可直接输入数字，双击全选");
+      // 失焦/回车：读框内值校验提交；Esc 由 keydown 里还原。
+      valueEl.addEventListener("blur", () => commitBleedEdit(field));
+      valueEl.setAttribute("title", BLEED_LABELS[field] + "出血：直接输入数字，回车或点别处生效");
       bindAction(el("step-up-" + field), () => stepBleed(field, 1));
       bindAction(el("step-down-" + field), () => stepBleed(field, -1));
     }
@@ -1151,20 +920,11 @@ function start() {
     for (const field of SIZE_FIELDS) {
       const valueEl = el(field);
       valueEl.addEventListener("keydown", event => onSizeKeydown(field, event));
-      valueEl.addEventListener("click", () => {
-        try { valueEl.focus(); } catch (error) { console.error("聚焦失败:", field, error); }
-      });
       // 焦点跟踪给 refresh() 的编辑保护用：聚焦中的框不能被轮询回写。
-      // 聚焦同时补闪烁光标；失焦清光标与选中。
-      valueEl.addEventListener("focus", () => { sizeFocus = field; attachCaret(valueEl); });
-      valueEl.addEventListener("blur", () => {
-        if (sizeFocus === field) sizeFocus = null;
-        detachCaret();
-        clearSelection(valueEl);
-      });
-      wireValueMouse(valueEl);
+      valueEl.addEventListener("focus", () => { sizeFocus = field; });
+      valueEl.addEventListener("blur", () => { if (sizeFocus === field) sizeFocus = null; });
       // 输入框不直接改状态：失焦/回车只把焦点移走，真正的修改走「确认修改」按钮。
-      valueEl.setAttribute("title", "点一下可直接输入数字，双击全选，回车或点「确认修改」生效");
+      valueEl.setAttribute("title", "直接输入数字，双击可全选，回车或点「确认修改」生效");
     }
     // 自绘单位下拉：一张卡一个，控制宽/高两行。选中后以文档为准重写换算值。
     buildUnitPicker("imageUnitPicker", function (unit) {
