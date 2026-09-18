@@ -783,9 +783,19 @@ async function applyCanvasSize() {
       colorApplied = await host.resizeCanvas(doc, widthPx, heightPx,
         ANCHOR_POSITION[canvasAnchor] || "MIDDLECENTER", extensionColor);
     }, "修改画布大小");
+    // 事后核验：AM 路径万一静默没生效（不抛错也不改尺寸），把实际尺寸亮给用户，
+    // 不再只报「已修改」。
+    let sizeNote = "";
+    try {
+      if (Number.isFinite(doc.width) && Number.isFinite(doc.height)
+          && (Math.abs(doc.width - widthPx) > 1 || Math.abs(doc.height - heightPx) > 1)) {
+        sizeNote = "（注意：文档实际 " + Math.round(doc.width) + " × " + Math.round(doc.height)
+          + " px，与请求不符，请截图反馈）";
+      }
+    } catch (_) {}
     message = "画布大小已修改为 " + widthValue + " × " + heightValue + " " + UNIT_NAMES[canvasUnit]
       + "（锚点：" + ANCHOR_LABEL[canvasAnchor]
-      + "，扩展颜色：" + EXT_COLOR_NAMES[canvasExtension] + "）。" + extensionNote;
+      + "，扩展颜色：" + EXT_COLOR_NAMES[canvasExtension] + "）。" + sizeNote + extensionNote;
     if (!colorApplied) message += "（注意：扩展颜色未能应用，新增区域可能为透明。）";
   } catch (error) {
     console.error(error);
