@@ -2,7 +2,7 @@
   "manifestVersion": 5,
   "id": "com.local.layout-guides",
   "name": "品牌版式标准规范PS插件",
-  "version": "1.9.3",
+  "version": "1.9.4",
   "main": "index.html",
   "host": {
     "app": "PS",
