@@ -18,7 +18,7 @@ const MODE_BUTTONS = ["update", "logo", "endorsement", "bleed"];
 const ALL_BUTTONS = MODE_BUTTONS.concat(["clear", "visibility", "applyImageSize", "applyCanvasSize", "restoreImageSize"]);
 
 let currentTab = "screen";
-let bleedLocked = false;
+let bleedLocked = true;         // 出血四边默认锁定（老大要求）
 let bleedUnit = "mm";
 let imageLock = true;           // 图片大小的「锁定宽高比」
 let canvasAnchor = "center";    // 画布大小的锚点（9 选 1）
@@ -916,6 +916,18 @@ function tidyMessage(text) {
   });
 }
 
+// 把 UXP 的英文网络错误翻成人话：页脚空间小，也不该用一串英文吓用户。
+// 触发原因常见三种：网络波动 / 防火墙拦截 GitHub / 未登录 API 每小时 60 次的限流。
+function friendlyUpdateError(text) {
+  if (/network request failed/i.test(text)) {
+    return "网络请求失败：可能是网络波动或防火墙拦截了 GitHub，稍后再试（不影响已装版本使用）。";
+  }
+  if (text.indexOf("403") >= 0) {
+    return "GitHub 拒绝了请求（403）：可能是访问频率超限，一小时后再试。";
+  }
+  return "检查更新失败：" + text;
+}
+
 // 没有内容时整行收起：页脚只在真正有更新消息时才多占一行，
 // 平时保持「状态条 + 检查更新/版权」两行，把高度留给上面的功能区。
 function setUpdateStatus(message, error) {
@@ -971,7 +983,7 @@ async function checkUpdate() {
     }
   } catch (error) {
     console.error(error);
-    setUpdateStatus(errorText(error), true);
+    setUpdateStatus(friendlyUpdateError(errorText(error)), true);
   } finally {
     setDisabled("checkUpdate", false);
   }
@@ -1088,6 +1100,12 @@ function start() {
       refresh(false);
       status("画布大小单位：" + (UNIT_NAMES[canvasUnit] || "厘米") + "。");
     });
+    // 真机 sp-picker 只认 value，不认 menu-item 的 selected 属性（实测框里显示空白）。
+    // 显式设置一次初值，和 selected 保持一致；预览替身也认这个属性。
+    try {
+      el("imageUnitPicker").value = imageUnit;
+      el("canvasUnitPicker").value = canvasUnit;
+    } catch (error) { console.error("设置单位下拉初值失败:", error); }
     el("applyImageSize").addEventListener("click", () => { void applyImageSize(); });
     el("applyImageSize").title = "按当前值修改图片大小（executeAsModal 包成一步）";
     bindAction(el("restoreImageSize"), restoreImageSize);
