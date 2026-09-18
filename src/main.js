@@ -507,14 +507,22 @@ function toggleExtPopup() {
   extHue = startHsv.h;
   extSV = { s: startHsv.s, v: startHsv.v };
   // ---- SV 选色区 + 色相条（模仿 PS 拾色器的选色布局，点一下即选；带位置标识）----
+  // v1.9.20 重要改动：SV 渐变**不走 JS 动态写的 background**——真机上它是间歇性
+  // 失效的（有时画得出有时整块变黑，两次截图一次正常一次全黑）。改成稳态实现：
+  // 底层铺**纯色**（hsl 随色相变，inline backgroundColor 与色块同款机制必渲染），
+  // 上面叠两层**写死在样式表里的渐变**（白→透明、黑→透明；色相条已证明样式表
+  // 渐变必渲染），三层叠出 PS 式选色面。
   const pickRow = document.createElement("div");
   pickRow.className = "ext-popup-row";
   const square = document.createElement("div");
   square.className = "ext-popup-sv";
-  const squareFill = document.createElement("div");
-  squareFill.className = "ext-popup-sv-fill";
-  square.appendChild(squareFill);
-  // 位置标识：白边方框小环，标出当前选中的饱和度 / 明度点（PS 同款形式）。
+  const squareWhite = document.createElement("div");
+  squareWhite.className = "ext-popup-sv-white";
+  square.appendChild(squareWhite);
+  const squareBlack = document.createElement("div");
+  squareBlack.className = "ext-popup-sv-black";
+  square.appendChild(squareBlack);
+  // 位置标识：白边小方环，标出当前选中的饱和度 / 明度点（PS 同款形式）。
   const svMarker = document.createElement("div");
   svMarker.className = "ext-popup-sv-marker";
   square.appendChild(svMarker);
@@ -526,7 +534,8 @@ function toggleExtPopup() {
     svMarker.style.top = Math.max(0, Math.min(rect.height - 12, (1 - extSV.v) * (rect.height - 12))) + "px";
   };
   const updateSv = () => {
-    square.style.background = "linear-gradient(to right, #ffffff, hsl(" + extHue + ", 100%, 50%))";
+    // 只写纯色背景（inline background-color），渐变交给样式表的两层遮罩。
+    square.style.backgroundColor = "hsl(" + extHue + ", 100%, 50%)";
     placeSvMarker();
   };
   const pickSv = event => {
