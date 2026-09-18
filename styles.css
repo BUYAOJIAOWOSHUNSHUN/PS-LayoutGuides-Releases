@@ -136,9 +136,15 @@ sp-button { display: flex; align-items: center; justify-content: center; text-al
 .size-field { display: block; padding-top: 6px; }
 .size-field-label { display: block; font-size: 10px; color: #a2a2a2; margin-bottom: 3px; }
 .size-input-row { display: flex; align-items: center; min-width: 0; }
-/* 单位下拉（真机 = UXP 原生 sp-picker；预览里由生成脚本提供替身）。
-   64px 太窄：真机下拉菜单会把「像素」两个字竖着排，加宽到 80px 才放得下。 */
-sp-picker.unit-picker { width: 80px; min-width: 80px; height: 24px; min-height: 24px; margin-left: 5px; flex-shrink: 0; font-size: 11px; }
+/* 单位下拉是**自绘**的（div + JS 菜单）—— sp-picker 真机事件不可控（菜单能弹但选项选不上），
+   自绘和自绘数值框同一套路：外观、点击、选中全由 styles.css + main.js 说了算。
+   菜单用 position:absolute 挂在容器下面；80px 宽保证「像素」两字不竖排。 */
+.unit-picker { width: 80px; height: 24px; margin-left: 5px; flex-shrink: 0; position: relative; display: flex; align-items: center; justify-content: space-between; box-sizing: border-box; padding: 0 8px; background: #3c3c3c; border: 1px solid #5a5a5a; border-radius: 4px; color: #e8e8e8; font-size: 11px; cursor: pointer; white-space: nowrap; overflow: visible; }
+.unit-picker:hover { border-color: #6f6f6f; }
+.unit-chevron { font-size: 9px; color: #b8b8b8; }
+.unit-menu { position: absolute; top: calc(100% + 2px); left: 0; min-width: 100%; width: max-content; background: #2b2b2b; border: 1px solid #5a5a5a; border-radius: 4px; z-index: 999; padding: 2px 0; box-shadow: 0 4px 10px rgba(0,0,0,0.4); }
+.unit-option-item { padding: 4px 12px; font-size: 11px; color: #e8e8e8; white-space: nowrap; cursor: pointer; }
+.unit-option-item:hover { background: #1473e6; color: #ffffff; }
 /* 高度/分辨率行右侧的静态单位文字，宽度和下拉一致。 */
 .size-unit-static { flex-shrink: 0; margin-left: 5px; width: 80px; box-sizing: border-box; text-align: center; font-size: 11px; color: #b8b8b8; }
 .size-value { display: block; width: 88px; flex-shrink: 0; height: 24px; padding: 0 6px; font-size: 12px; line-height: 24px; color: #e8e8e8; text-align: right; background: #3c3c3c; border: 1px solid #5a5a5a; border-radius: 4px; white-space: nowrap; overflow: hidden; box-sizing: border-box; }
