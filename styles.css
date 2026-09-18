@@ -146,7 +146,7 @@ sp-button { display: flex; align-items: center; justify-content: center; text-al
    菜单用 position:absolute 挂在容器下面；80px 宽保证「像素」两字不竖排。 */
 .unit-picker { width: 80px; height: 24px; margin-left: 5px; flex-shrink: 0; position: relative; display: flex; align-items: center; justify-content: space-between; box-sizing: border-box; padding: 0 8px; background: #3c3c3c; border: 1px solid #5a5a5a; border-radius: 4px; color: #e8e8e8; font-size: 11px; cursor: pointer; white-space: nowrap; overflow: visible; }
 .unit-picker:hover { border-color: #6f6f6f; }
-.unit-chevron { font-size: 9px; color: #b8b8b8; }
+.unit-chevron { font-size: 14px; color: #d6d6d6; margin-left: 5px; line-height: 16px; }
 .unit-menu { position: absolute; top: calc(100% + 2px); left: 0; min-width: 100%; width: max-content; background: #2b2b2b; border: 1px solid #5a5a5a; border-radius: 4px; z-index: 999; padding: 2px 0; box-shadow: 0 4px 10px rgba(0,0,0,0.4); }
 .unit-option-item { display: flex; align-items: center; height: 22px; padding: 0 10px; font-size: 11px; color: #e8e8e8; white-space: nowrap; cursor: pointer; }
 .unit-option-item:hover { background: #1473e6; color: #ffffff; }
@@ -184,7 +184,7 @@ sp-button { display: flex; align-items: center; justify-content: center; text-al
 .ext-popup-hue-marker { position: absolute; left: -3px; right: -3px; height: 3px; background: #ffffff; border: 1px solid #000000; box-sizing: border-box; }
 .ext-popup-swatch { width: 16px; height: 16px; margin-right: 3px; box-sizing: border-box; border: 1px solid #5a5a5a; cursor: pointer; }
 .ext-popup-swatch:hover { border-color: #8ab4e8; }
-sp-textfield.ext-popup-input { width: 96px; flex: 0 0 auto; margin: 0; margin-right: 4px; }
+sp-textfield.ext-popup-input { width: 96px; flex: 0 0 auto; margin: 0; margin-right: 4px; opacity: 0.45; }
 /* 小面板十六进制框的衬底变体（v1.9.18）：宽 96px，浅灰衬底同 .field-wrap。
    双类名提升优先级，压过 .field-wrap 的 88px 默认宽。 */
 .field-wrap.field-wrap-hex { width: 96px; }
@@ -201,7 +201,10 @@ sp-textfield.size-input, sp-textfield.ext-popup-input {
 }
 /* 图片/画布数值框也是真输入控件 sp-textfield（v1.9.6 起，同样为了根治按键透传）。
    原生光标、拖拽选区、宿主按键抑制都是白送的；内部底色是组件写死的深灰（功能优先）。 */
-sp-textfield.size-input { width: 88px; flex: 0 0 auto; margin: 0; }
+/* v1.9.22：底色还是太黑 → 透明度直接写进数值框自己的专属规则（不再依赖
+   .field-wrap > sp-textfield 的子选择器组合，真机上那招可能没匹配上），
+   衬底同步提亮到 #909090。内部视觉约 #5d，白字柔化为 #c2（PS 对话框观感）。 */
+sp-textfield.size-input { width: 88px; flex: 0 0 auto; margin: 0; opacity: 0.45; }
 /* 单位下拉由 sp-picker 承担（见上）；分辨率行固定 PPI。 */
 /* 确认修改行：右对齐的按钮；margin-top:auto 让它贴卡片底部。 */
 .size-apply-row { display: flex; justify-content: flex-end; align-items: center; padding-top: 8px; margin-top: auto; border-top: 1px solid #454545; }
@@ -287,6 +290,8 @@ sp-button.install-button .button-label { font-size: 11px; font-weight: 400; line
   （PS 对话框的观感），白字随之柔化为浅灰（PS 对话框的字同样偏灰）。
    透明度不影响焦点与键盘输入。衬底宽度与原数值框一致（88px），几何完全不变，
    所以 9 个框必须包在 .field-wrap 里（main.js start() 末尾统一包）。 */
-.field-wrap { position: relative; display: flex; flex: 0 0 auto; width: 88px; background: #808080; border-radius: 3px; }
-.field-wrap > sp-textfield { width: 100%; opacity: 0.5; }
+.field-wrap { position: relative; display: flex; flex: 0 0 auto; width: 88px; background: #909090; border-radius: 3px; }
+.field-wrap > sp-textfield { width: 100%; opacity: 0.45; }
+/* 子选择器的兜底：万一真机不吃「>」组合器，后代选择器再保一遍。 */
+.field-wrap sp-textfield { width: 100%; opacity: 0.45; }
 .muted.error-text { color: #ffb4a0; }
