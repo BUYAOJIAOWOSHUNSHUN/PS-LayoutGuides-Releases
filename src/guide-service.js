@@ -132,13 +132,32 @@ class GuideService {
       return await this.host.modal(async context => {
         const doc = this.host.active();
         if (!doc || doc.id !== expectedId) throw new Error("活动文档已改变，请重新点击操作。");
-        const layout = calculateLayout(doc.width, doc.height, brand);
         const bleedPx = {
           top: millimetresToPixels(bleedMM.top, doc.resolution),
           right: millimetresToPixels(bleedMM.right, doc.resolution),
           bottom: millimetresToPixels(bleedMM.bottom, doc.resolution),
           left: millimetresToPixels(bleedMM.left, doc.resolution)
         };
+        // 版心线 / LOGO 高度线 / 背书高度线基于**出血内缩后的区域**计算：
+        // 出血 1cm 时，版心边距从出血线往里量，而不是从画布边缘（老大的规则，v1.8.5 起）。
+        const contentW = doc.width - bleedPx.left - bleedPx.right;
+        const contentH = doc.height - bleedPx.top - bleedPx.bottom;
+        // clear 模式不算辅助线位置，布局用什么尺寸都行，别让超大出血把「清除」也卡住。
+        if (mode !== "clear" && (contentW <= 0 || contentH <= 0)) {
+          throw new Error("出血值大于画布尺寸，无法计算版心 / LOGO / 背书线。");
+        }
+        const layout = calculateLayout(
+          mode === "clear" ? doc.width : contentW,
+          mode === "clear" ? doc.height : contentH,
+          brand
+        );
+        // 出血线自身仍以画布边缘为基准，从画布四边向内缩。
+        const canvasLayout = calculateLayout(doc.width, doc.height, brand);
+        // 内容区坐标 → 画布坐标：整体平移（左、上出血）。
+        const shift = target => ({
+          direction: target.direction,
+          coordinate: target.coordinate + (target.direction === "vertical" ? bleedPx.left : bleedPx.top)
+        });
         const known = this.ledger.get(doc.id) || new Set();
         const before = this.host.listGuides(doc);
         const owned = before.filter(g => known.has(g.id));
@@ -154,26 +173,26 @@ class GuideService {
         const includeLOGO = mode !== "clear" && (mode === "logo" || owned.some(g => logoIds.has(g.id)));
         const includeEndorsement = mode !== "clear" && (mode === "endorsement" || owned.some(g => endorsementIds.has(g.id)));
         const includeBleed = mode !== "clear" && (mode === "bleed" || owned.some(g => bleedIds.has(g.id)));
-        const canvasTargets = includeMargin ? guideTargets(layout).slice() : [];
+        const canvasTargets = includeMargin ? guideTargets(layout).map(shift) : [];
         const marginIndices = includeMargin ? canvasTargets.map((item, index) => index) : [];
         // Keep content margins independent from the LOGO's local safety inset.
         const logoIndices = [];
         if (includeLOGO) {
           logoIndices.push(canvasTargets.length);
-          canvasTargets.push({ direction: "horizontal", coordinate: layout.logoSafeInset + layout.logoHeight });
+          canvasTargets.push({ direction: "horizontal", coordinate: bleedPx.top + layout.logoSafeInset + layout.logoHeight });
           if (layout.logoSafeInset > layout.marginX + EPSILON) {
             logoIndices.push(canvasTargets.length);
-            canvasTargets.push({ direction: "horizontal", coordinate: layout.logoSafeInset });
+            canvasTargets.push({ direction: "horizontal", coordinate: bleedPx.top + layout.logoSafeInset });
             logoIndices.push(canvasTargets.length);
-            canvasTargets.push({ direction: "vertical", coordinate: layout.logoSafeInset });
+            canvasTargets.push({ direction: "vertical", coordinate: bleedPx.left + layout.logoSafeInset });
           }
         }
         const endorsementIndex = canvasTargets.length;
-        if (includeEndorsement) canvasTargets.push({ direction: "horizontal", coordinate: layout.height - layout.marginX - layout.endorsementHeight });
+        if (includeEndorsement) canvasTargets.push({ direction: "horizontal", coordinate: bleedPx.top + layout.height - layout.marginX - layout.endorsementHeight });
         // 出血线画在画布外，四条各自独立，允许上下左右数值不同。
         const bleedIndices = [];
         if (includeBleed) {
-          for (const target of bleedTargets(layout, bleedPx)) {
+          for (const target of bleedTargets(canvasLayout, bleedPx)) {
             bleedIndices.push(canvasTargets.length);
             canvasTargets.push(target);
           }
