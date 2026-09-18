@@ -22,21 +22,25 @@ value >> 16            // 错误：会截断小数，负数还会算错
 
 ---
 
-## 2. 参考线（Guide）不能单独设色
+## 2. 参考线（Guide）不能单独设色？—— DOM 不行，Action Manager 可以（待真机终验）
 
-`src/guide-service.js`
+`src/guide-service.js`、`src/photoshop-host.js`
 
+**UXP DOM API 结论（v1.9.6 前的依据，仍然成立）：**
 - `Guide` 对象只有这些成员：`coordinate`、`direction`、`docId`、`id`、`parent`、`typename`、`delete()`。
 - 创建方法是 `Guides.add(direction, coordinate)`，只接收方向和坐标。
-- **没有任何颜色字段。**
+- **DOM 层没有任何颜色字段。**
 
-参考线颜色属于 Photoshop 的全局首选项（首选项 > 参考线、网格和切片），改一次所有参考线一起变。
+**v1.9.7 起的补充结论（来自「新建参考线」对话框能选颜色的反向推理）：**
+- 既然 PS 自带的「新建参考线」对话框能随线选颜色，说明**底层数据模型支持单条参考线带色**，
+  只是 DOM API 没暴露 —— 走 batchPlay（Action Manager）建线即可带上 RGB 颜色。
+- 实现（photoshop-host.addColoredGuide）：batchPlay `_obj:"make"` + `new:{_obj:"guide",
+  position, orientation, color:{_obj:"RGBColor", red, grain, blue}}`；
+  建完按「方向+坐标+新 ID」在 `doc.guides` 里认领归属；不支持时自动退回普通建线并提示。
+- **待真机终验**：颜色键（color → RGBColor{red/grain/blue}）是按 AM 规范推测的，
+  真机上若颜色未生效（线是默认色），需要换键名再试（候选：`"Clr "` charID 形式）。
 
-结论：靠颜色区分「版心线 / LOGO 线 / 出血线」在原生辅助线机制下做不到。
-当前方案是**靠位置区分**（出血线在画布外，版心线在画布内）。
-如果一定要彩色分组，只能改用图层线条（会进图层栈，导出前需要隐藏）。
-
-依据：Adobe UXP Photoshop API 参考 —— Guides / Guide 类文档。
+依据：PS「新建参考线」对话框自带颜色选项（用户截图）+ Action Manager 建线事件；真机终验待补。
 
 ---
 
