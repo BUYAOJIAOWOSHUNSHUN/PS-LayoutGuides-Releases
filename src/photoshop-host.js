@@ -2,6 +2,22 @@
 
 const { originPixels } = require("./origin.js");
 
+// AnchorPosition 枚举名 → 画布大小 AM 描述符的 horizontal/vertical 枚举值
+//（horizontalLocation / verticalLocation：left/center/right × top/center/bottom）。
+const CANVAS_ANCHOR = {
+  TOPLEFT: ["left", "top"], TOPCENTER: ["center", "top"], TOPRIGHT: ["right", "top"],
+  MIDDLELEFT: ["left", "center"], MIDDLECENTER: ["center", "center"], MIDDLERIGHT: ["right", "center"],
+  BOTTOMLEFT: ["left", "bottom"], BOTTOMCENTER: ["center", "bottom"], BOTTOMRIGHT: ["right", "bottom"]
+};
+
+// 彩色参考线的候选颜色键（按可能性排序，运行时逐个探测）：
+// 0. "Clr "（charID）+ RGBC 对象 —— Action Manager 里所有「带颜色的对象」
+//    （纯色层、投影颜色、内容层……）几乎都用这个键，是最可能的写法；
+// 1. "color"（stringID）—— v1.9.8 的老方案，真机已证明颜色不生效（但建线不报错）；
+// 2. "guidesColor" —— PS 官方术语表（PIStringTerminology.h）里登记过的 stringID；
+// 3/4. 同样的键放在 make 描述符顶层（万一颜色挂在事件层而不是 guide 对象层）。
+const GUIDE_COLOR_KEYS = ["Clr ", "color", "guidesColor"];
+
 function createPhotoshopHost(ps) {
   function active() {
     if (!ps.app.documents.length) return null;
@@ -48,37 +64,93 @@ function createPhotoshopHost(ps) {
       }
       return { id: guide.id, docId: guide.docId };
     },
-    // 彩色参考线：UXP 的 Guide DOM 对象没有颜色字段，但底层（Action Manager）的
-    // 建线事件支持随线指定 RGB 颜色——「新建参考线」对话框能选颜色就是证据。
-    // 这里走 batchPlay 直接建带色参考线；发现不支持就记住并退回普通建线（只丢颜色不丢功能）。
-    // 建完后用「方向 + 坐标 + 新 ID」在辅助线集合里认领回这条线，归属核验和普通建线一样严。
+    // 彩色参考线：UXP 的 Guide DOM 对象没有颜色字段，但 PS 自带「新建参考线 /
+    // 新建参考线版面」对话框都能随线选颜色，说明底层数据模型支持单线带色，
+    // 只是官方没把键名写进文档。v1.9.8 只试了一种键（"color" → RGBColor），
+    // 真机上线出来了但颜色没生效。v1.9.9 改成**多方案探测**：
+    // 按可能性排序逐个试，哪个键 PS 认就用哪个并记住（本次会话内不再重复探测）；
+    // 建完尽量回读这条线的描述符来验证颜色真的写上了 —— 回读得到的描述符里
+    // 有颜色键才算实锤，描述符里干干净净（连方向和坐标都读到了）就删掉换下一个键；
+    // 回读本身不支持（PS 报错）时按「没报错就收货」处理，不再折腾。
     coloredGuidesSupported: true,
+    coloredVariantIndex: -1,
     async addColoredGuide(doc, direction, coordinate, rgb) {
       if (this.coloredGuidesSupported === false) {
         return this.addGuide(doc, { direction, coordinate });
       }
-      const beforeIds = new Set(this.listGuides(doc).map(g => g.id));
+      const colorObj = { _obj: "RGBColor", red: rgb.r, grain: rgb.g, blue: rgb.b };
+      // 探测顺序：记住的胜出键最优先，其余按 GUIDE_COLOR_KEYS 的顺序跟在后面。
+      const order = [];
+      if (this.coloredVariantIndex >= 0) order.push(this.coloredVariantIndex);
+      for (let i = 0; i < GUIDE_COLOR_KEYS.length * 2; i++) {
+        if (order.indexOf(i) < 0) order.push(i);
+      }
+      for (const index of order) {
+        const key = GUIDE_COLOR_KEYS[index % GUIDE_COLOR_KEYS.length];
+        const topLevel = index >= GUIDE_COLOR_KEYS.length;
+        const beforeIds = new Set(this.listGuides(doc).map(g => g.id));
+        try {
+          await ps.action.batchPlay([this.coloredGuideDescriptor(direction, coordinate, key, colorObj, topLevel)], {});
+        } catch (error) {
+          continue;   // 这个键 PS 直接不认（报错），试下一个
+        }
+        const created = this.listGuides(doc).find(g =>
+          g.direction === direction && Math.abs(g.coordinate - coordinate) <= 0.1 && !beforeIds.has(g.id));
+        if (!created || !Number.isInteger(created.id) || created.docId !== doc.id) continue;
+        const verdict = await this.readGuideColor(doc, created.id);
+        if (verdict === false) {
+          // 线建上了但颜色被无视 —— 删掉这条，换下一个键。
+          try { await this.deleteGuide(doc, created.id); } catch (_) {}
+          continue;
+        }
+        this.coloredVariantIndex = index;
+        return { id: created.id, docId: created.docId };
+      }
+      // 全部键都不行：退回普通建线（只丢颜色不丢功能），由 guide-service 补提示。
+      this.coloredGuidesSupported = false;
+      return this.addGuide(doc, { direction, coordinate });
+    },
+    // 生成「建带色参考线」的 batchPlay 描述符。topLevel=true 时颜色挂在 make 顶层，
+    // 否则挂在 guide 对象里（与位置、方向平级）。
+    coloredGuideDescriptor(direction, coordinate, key, colorObj, topLevel) {
+      const guideObj = {
+        _obj: "guide",
+        position: { _unit: "pixelsUnit", _value: coordinate },
+        orientation: { _enum: "orientation", _value: direction }
+      };
+      const desc = { _obj: "make", new: guideObj, _options: { dialogOptions: "dontDisplay" } };
+      if (topLevel) desc[key] = colorObj;
+      else guideObj[key] = colorObj;
+      return desc;
+    },
+    // 回读一条参考线的描述符，看颜色键在不在：
+    //   true  = 描述符里确实带颜色键（实锤成功）
+    //   false = 描述符读到了、连方向坐标都全，就是没有颜色键（实锤失败）
+    //   null  = 回读不了 / 结果不可信（无法验证，按成功收货）
+    async readGuideColor(doc, guideId) {
+      let index = -1;
+      for (let i = 0; i < doc.guides.length; i++) {
+        if (doc.guides[i].id === guideId) { index = i; break; }
+      }
+      if (index < 0) return null;
+      let result;
       try {
-        await ps.action.batchPlay([{
-          _obj: "make",
-          new: {
-            _obj: "guide",
-            position: { _unit: "pixelsUnit", _value: coordinate },
-            orientation: { _enum: "orientation", _value: direction },
-            color: { _obj: "RGBColor", red: rgb.r, grain: rgb.g, blue: rgb.b }
-          },
-          _options: { dialogOptions: "dontDisplay" }
+        // _index 是 1 基的（AM 引用约定），集合序号要 +1。
+        result = await ps.action.batchPlay([{
+          _obj: "get",
+          _target: [{ _ref: "guide", _index: index + 1 },
+                    { _ref: "document", _enum: "ordinal", _value: "targetEnum" }],
+          _options: { dialogOptions: "silent" }
         }], {});
-      } catch (error) {
-        this.coloredGuidesSupported = false;
-        return this.addGuide(doc, { direction, coordinate });
+      } catch (_) {
+        return null;
       }
-      const created = this.listGuides(doc).find(g =>
-        g.direction === direction && Math.abs(g.coordinate - coordinate) <= 0.1 && !beforeIds.has(g.id));
-      if (!created || !Number.isInteger(created.id) || created.docId !== doc.id) {
-        throw new Error("彩色辅助线创建后无法核验归属。");
+      const desc = result && result[0];
+      if (!desc || desc._obj === "error" || desc.Ornt === undefined) return null;
+      for (const key of GUIDE_COLOR_KEYS) {
+        if (desc[key] !== undefined) return true;
       }
-      return { id: created.id, docId: created.docId };
+      return false;
     },
     async deleteGuide(doc, id) {
       // Resolve again after every deletion; collection indices change.
@@ -120,11 +192,65 @@ function createPhotoshopHost(ps) {
       const ResampleMethod = ps.constants.ResampleMethod;
       await doc.resizeImage(width, height, resolution, ResampleMethod.BICUBIC);
     },
-    // 画布大小：宽/高是像素，anchor 是 TOPLEFT / TOPCENTER / ... / BOTTOMRIGHT 中的一个。
-    async resizeCanvas(doc, width, height, anchor) {
+    // 画布大小（v1.9.9 起走 batchPlay，为了带上「画布扩展颜色」）：
+    // DOM 的 doc.resizeCanvas 没有颜色参数。PS「画布大小」对话框的扩展颜色在
+    // Action Manager 里是 canvasExtensionColorType 枚举（"Clr " = 自定颜色）+
+    // canvasExtensionColor（RGBC 对象），已从 ScriptListener 记录核实（CnvS 事件）；
+    // 锚点用 horizontal / vertical 两个枚举（left/center/right × top/center/bottom），
+    // 与 AnchorPosition 的九个取值一一对应（CANVAS_ANCHOR 表）。
+    // 返回 true = 扩展颜色一起应用了；false = 画布改了但颜色没应用上（见回退）。
+    async resizeCanvas(doc, width, height, anchor, extensionColor) {
       if (!active() || active().id !== doc.id) throw new Error("活动文档已改变，请重新点击操作。");
-      const AnchorPosition = ps.constants.AnchorPosition;
-      await doc.resizeCanvas(width, height, AnchorPosition[anchor]);
+      const hv = CANVAS_ANCHOR[anchor] || CANVAS_ANCHOR.MIDDLECENTER;
+      const desc = {
+        _obj: "canvasSize",
+        relative: false,
+        width: { _unit: "pixelsUnit", _value: width },
+        height: { _unit: "pixelsUnit", _value: height },
+        horizontal: { _enum: "horizontalLocation", _value: hv[0] },
+        vertical: { _enum: "verticalLocation", _value: hv[1] }
+      };
+      if (extensionColor) {
+        desc.canvasExtensionColorType = { _enum: "canvasExtensionColorType", _value: "Clr " };
+        desc.canvasExtensionColor = {
+          _obj: "RGBColor",
+          red: extensionColor.r, grain: extensionColor.g, blue: extensionColor.b
+        };
+      }
+      try {
+        await ps.action.batchPlay([desc], {});
+        return true;
+      } catch (error) {
+        // 带颜色失败（例如文档没有背景层时扩展颜色本就不可用）→ 先退一次
+        // 不带颜色的 AM；再失败退 DOM 的 resizeCanvas。保证「改画布」优先于颜色。
+        if (extensionColor) {
+          const plain = Object.assign({}, desc);
+          delete plain.canvasExtensionColorType;
+          delete plain.canvasExtensionColor;
+          try {
+            await ps.action.batchPlay([plain], {});
+            return false;
+          } catch (_) {}
+        }
+        const AnchorPosition = ps.constants.AnchorPosition;
+        await doc.resizeCanvas(width, height, AnchorPosition[anchor]);
+        return false;
+      }
+    },
+    // 前景 / 背景色（画布扩展颜色选「前景 / 背景」时用）：
+    // app.foregroundColor 是 SolidColor，rgb 下有 red/green/blue 三个浮点。
+    // 读不到就返回 null，调用方自己兜底，绝不因为读颜色卡住改画布。
+    getForegroundRGB() {
+      try {
+        const c = ps.app.foregroundColor;
+        return { r: Math.round(c.rgb.red), g: Math.round(c.rgb.green), b: Math.round(c.rgb.blue) };
+      } catch (_) { return null; }
+    },
+    getBackgroundRGB() {
+      try {
+        const c = ps.app.backgroundColor;
+        return { r: Math.round(c.rgb.red), g: Math.round(c.rgb.green), b: Math.round(c.rgb.blue) };
+      } catch (_) { return null; }
     },
     // 文档颜色模式：Document.mode 在不同 UXP 版本可能返回数字枚举或字符串，
     // 统一转大写后按关键词归类成 RGB / CMYK / GRAY / 其它原文。
