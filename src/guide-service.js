@@ -219,14 +219,33 @@ class GuideService {
         const checkCancelled = () => { if (context.isCancelled) throw new Error("操作已取消。"); };
         checkCancelled();
         const suspension = await context.hostControl.suspendHistory({ documentID: doc.id, name });
+        // 每个目标一条 ID，下标与 targets 对齐 —— 出血组可能由「整组通道」一次建出，
+        // 循环里跳过已建的下标；台账注入也按下标，不能再靠创建顺序对齐。
+        const createdByIdx = new Array(targets.length).fill(null);
         const created = [];
         try {
           for (const guide of (mode === "clear" ? before : owned)) {
             checkCancelled();
             await this.host.deleteGuide(doc, guide.id);
           }
-          for (const target of targets) {
+          // 出血线优先走整组通道（v1.9.11）：PS「新建参考线版面」的彩色边距参考线
+          // （newGuideLayout + guidesColor），这是唯一有实证的彩色建线通道 ——
+          // 官方对话框在真机上建出来的就是带色线。整组失败（缺线/报错）再走逐条。
+          // 假宿主没实现这个方法时直接跳过（老测试环境走逐条路径）。
+          if (includeBleed && typeof this.host.addBleedGuidesGroup === "function") {
+            const groupTargets = bleedIndices.map(i => canvasTargets[i]);
+            const group = await this.host.addBleedGuidesGroup(doc, groupTargets, GUIDE_COLORS.bleed, origin);
+            if (group) {
+              for (let k = 0; k < bleedIndices.length; k++) {
+                createdByIdx[bleedIndices[k]] = group[k].id;
+                created.push(group[k].id);
+              }
+            }
+          }
+          for (let index = 0; index < targets.length; index++) {
+            if (createdByIdx[index] !== null) continue;   // 整组通道已建
             checkCancelled();
+            const target = targets[index];
             // 挂了 color 的目标走 batchPlay 建彩色参考线，其余走普通建线。
             const guide = target.color
               ? await this.host.addColoredGuide(doc, target.direction, target.coordinate, target.color)
@@ -234,6 +253,7 @@ class GuideService {
             if (before.some(g => g.id === guide.id) || created.includes(guide.id)) {
               throw new Error("新增辅助线 ID 不唯一，已中止更新。");
             }
+            createdByIdx[index] = guide.id;
             created.push(guide.id);
           }
           const after = this.host.listGuides(doc);
@@ -253,13 +273,13 @@ class GuideService {
         }
         for (const id of created) known.add(id);
         this.ledger.set(doc.id, known);
-        if (includeMargin) for (const index of marginIndices) marginIds.add(created[index]);
+        if (includeMargin) for (const index of marginIndices) marginIds.add(createdByIdx[index]);
         this.marginLedger.set(doc.id, marginIds);
-        if (includeLOGO) for (const index of logoIndices) logoIds.add(created[index]);
+        if (includeLOGO) for (const index of logoIndices) logoIds.add(createdByIdx[index]);
         this.logoLedger.set(doc.id, logoIds);
-        if (includeEndorsement) endorsementIds.add(created[endorsementIndex]);
+        if (includeEndorsement) endorsementIds.add(createdByIdx[endorsementIndex]);
         this.endorsementLedger.set(doc.id, endorsementIds);
-        if (includeBleed) for (const index of bleedIndices) bleedIds.add(created[index]);
+        if (includeBleed) for (const index of bleedIndices) bleedIds.add(createdByIdx[index]);
         this.bleedLedger.set(doc.id, bleedIds);
         if (mode === "clear") return { message: "已清除当前文档的全部辅助线。" };
         // 彩色参考线不被当前 Photoshop 支持时，host 已退回默认色，这里补一句说明。
