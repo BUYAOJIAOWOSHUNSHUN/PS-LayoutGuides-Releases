@@ -151,7 +151,9 @@ sp-picker.unit-picker { width: 64px; min-width: 64px; height: 24px; min-height: 
 .ch.sel { background: #1473e6; color: #ffffff; }
 /* 单位下拉由 sp-picker 承担（见上）；分辨率行固定 PPI。 */
 /* 确认修改行：右对齐的按钮；margin-top:auto 让它贴卡片底部。 */
-.size-apply-row { display: flex; justify-content: flex-end; padding-top: 8px; margin-top: auto; border-top: 1px solid #454545; }
+.size-apply-row { display: flex; justify-content: flex-end; align-items: center; padding-top: 8px; margin-top: auto; border-top: 1px solid #454545; }
+/* 还原（弱化小按钮）+ 确认修改（主按钮）并排，中间 8px。 */
+.size-apply-row sp-button + sp-button { margin-left: 8px; }
 
 /* 锚点 9 格选择器：3×3 网格，跟 PS「画布大小」对话框一样的布局。
    **不能用 display:grid** —— UXP 真机不支持 CSS Grid（浏览器预览是 Chrome 看不出来），
