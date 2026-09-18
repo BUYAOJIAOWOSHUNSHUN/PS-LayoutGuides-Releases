@@ -184,11 +184,17 @@ sp-button { display: flex; align-items: center; justify-content: center; text-al
 .ext-popup-hue-marker { position: absolute; left: -3px; right: -3px; height: 3px; background: #ffffff; border: 1px solid #000000; box-sizing: border-box; }
 .ext-popup-swatch { width: 16px; height: 16px; margin-right: 3px; box-sizing: border-box; border: 1px solid #5a5a5a; cursor: pointer; }
 .ext-popup-swatch:hover { border-color: #8ab4e8; }
-sp-textfield.ext-popup-input { width: 96px; flex: 0 0 auto; margin: 0; margin-right: 4px; opacity: 0.45; }
+/* 十六进制输入框：撑满 96px 衬底容器（不再带 margin 把内容顶出衬底），
+   透明度 0.45 压深色内部（v1.9.16 起的浅底方案，衬底由 .field-wrap 出）。 */
+sp-textfield.ext-popup-input { width: 100%; margin: 0; opacity: 0.45; }
 /* 小面板十六进制框的衬底变体（v1.9.18）：宽 96px，浅灰衬底同 .field-wrap。
-   双类名提升优先级，压过 .field-wrap 的 88px 默认宽。 */
-.field-wrap.field-wrap-hex { width: 96px; }
-/* 「应用」按钮缩小（v1.9.16，老大反馈）；auto 外边距显式归零防它被推到行尾。 */
+   双类名提升优先级，压过 .field-wrap 的 88px 默认宽；flex 收缩禁掉。 */
+.field-wrap.field-wrap-hex { width: 96px; flex: 0 0 auto; }
+/* 「应用」按钮（v1.9.23 重排）：收缩容器 .ext-popup-apply-wrap 包住中和
+   sp-button 的内置 auto 外边距（margin:0 真机压不过它，页脚「检查更新」
+   同款坑），容器 flex:1 吃掉中间空隙、justify-content 贴右 —— 按钮钉在
+   行尾右下角，与输入框隔 8px，不再叠在输入框上（老大反馈重叠）。 */
+.ext-popup-apply-wrap { display: flex; flex-direction: row; justify-content: flex-end; align-items: center; flex: 1 1 auto; min-width: 0; margin-left: 8px; }
 sp-button.ext-popup-apply { min-width: 0; height: 22px; padding: 0 10px; margin: 0; flex: 0 0 auto; }
 sp-button.ext-popup-apply .button-label { font-size: 11px; }
 /* 输入框底色调浅（v1.9.16，老大反馈太黑）：先把组件主题整体调到 dark
