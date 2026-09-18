@@ -6,6 +6,12 @@ const { findBrand } = require("./brands.js");
 
 const EPSILON = 0.02;
 const MODES = ["update", "logo", "endorsement", "bleed", "clear"];
+// 彩色参考线（老大要求）：出血线紫色，版心线 / LOGO 高度线 / 背书线绿色。
+// 走 batchPlay 建带色参考线；PS 不支持时 host 会自动退回默认色并在状态栏提示。
+const GUIDE_COLORS = {
+  guide: { r: 0, g: 166, b: 81 },      // 绿
+  bleed: { r: 160, g: 32, b: 240 }     // 紫
+};
 const MODE_NAMES = {
   update: "更新版心辅助线",
   logo: "更新 LOGO 高度辅助线",
@@ -100,6 +106,7 @@ class GuideService {
     const brand = this.brand;
     return {
       id: doc.id, name: doc.title || doc.name || "未命名文档", resolution: doc.resolution,
+      mode: this.host.getMode(doc),
       brandId: brand.id, brandName: brand.name,
       layout: calculateLayout(doc.width, doc.height, brand),
       ownedCount: guides.filter(g => ids.has(g.id)).length,
@@ -173,33 +180,35 @@ class GuideService {
         const includeLOGO = mode !== "clear" && (mode === "logo" || owned.some(g => logoIds.has(g.id)));
         const includeEndorsement = mode !== "clear" && (mode === "endorsement" || owned.some(g => endorsementIds.has(g.id)));
         const includeBleed = mode !== "clear" && (mode === "bleed" || owned.some(g => bleedIds.has(g.id)));
-        const canvasTargets = includeMargin ? guideTargets(layout).map(shift) : [];
+        const canvasTargets = includeMargin
+          ? guideTargets(layout).map(t => Object.assign(shift(t), { color: GUIDE_COLORS.guide }))
+          : [];
         const marginIndices = includeMargin ? canvasTargets.map((item, index) => index) : [];
         // Keep content margins independent from the LOGO's local safety inset.
         const logoIndices = [];
         if (includeLOGO) {
           logoIndices.push(canvasTargets.length);
-          canvasTargets.push({ direction: "horizontal", coordinate: bleedPx.top + layout.logoSafeInset + layout.logoHeight });
+          canvasTargets.push({ direction: "horizontal", coordinate: bleedPx.top + layout.logoSafeInset + layout.logoHeight, color: GUIDE_COLORS.guide });
           if (layout.logoSafeInset > layout.marginX + EPSILON) {
             logoIndices.push(canvasTargets.length);
-            canvasTargets.push({ direction: "horizontal", coordinate: bleedPx.top + layout.logoSafeInset });
+            canvasTargets.push({ direction: "horizontal", coordinate: bleedPx.top + layout.logoSafeInset, color: GUIDE_COLORS.guide });
             logoIndices.push(canvasTargets.length);
-            canvasTargets.push({ direction: "vertical", coordinate: bleedPx.left + layout.logoSafeInset });
+            canvasTargets.push({ direction: "vertical", coordinate: bleedPx.left + layout.logoSafeInset, color: GUIDE_COLORS.guide });
           }
         }
         const endorsementIndex = canvasTargets.length;
-        if (includeEndorsement) canvasTargets.push({ direction: "horizontal", coordinate: bleedPx.top + layout.height - layout.marginX - layout.endorsementHeight });
+        if (includeEndorsement) canvasTargets.push({ direction: "horizontal", coordinate: bleedPx.top + layout.height - layout.marginX - layout.endorsementHeight, color: GUIDE_COLORS.guide });
         // 出血线画在画布外，四条各自独立，允许上下左右数值不同。
         const bleedIndices = [];
         if (includeBleed) {
           for (const target of bleedTargets(canvasLayout, bleedPx)) {
             bleedIndices.push(canvasTargets.length);
-            canvasTargets.push(target);
+            canvasTargets.push(Object.assign(target, { color: GUIDE_COLORS.bleed }));
           }
         }
         const origin = mode !== "clear" ? await this.host.readOrigin(doc) : null;
         const targets = canvasTargets.map(t => ({
-          direction: t.direction, coordinate: relativeCoordinate(t, origin)
+          direction: t.direction, coordinate: relativeCoordinate(t, origin), color: t.color
         }));
         if (mode !== "clear" && matchesTargets(owned, targets)) {
           return await this.showResult(doc, describeCurrent(includeMargin, includeLOGO, includeEndorsement, includeBleed));
@@ -218,7 +227,10 @@ class GuideService {
           }
           for (const target of targets) {
             checkCancelled();
-            const guide = await this.host.addGuide(doc, target);
+            // 挂了 color 的目标走 batchPlay 建彩色参考线，其余走普通建线。
+            const guide = target.color
+              ? await this.host.addColoredGuide(doc, target.direction, target.coordinate, target.color)
+              : await this.host.addGuide(doc, target);
             if (before.some(g => g.id === guide.id) || created.includes(guide.id)) {
               throw new Error("新增辅助线 ID 不唯一，已中止更新。");
             }
@@ -250,7 +262,11 @@ class GuideService {
         if (includeBleed) for (const index of bleedIndices) bleedIds.add(created[index]);
         this.bleedLedger.set(doc.id, bleedIds);
         if (mode === "clear") return { message: "已清除当前文档的全部辅助线。" };
-        return await this.showResult(doc, buildMessage(mode, includeMargin, includeLOGO, includeEndorsement, includeBleed, logoIndices));
+        // 彩色参考线不被当前 Photoshop 支持时，host 已退回默认色，这里补一句说明。
+        const colorNote = this.host.coloredGuidesSupported === false
+          ? "（注意：当前 Photoshop 不支持彩色参考线，已按默认颜色生成。）"
+          : "";
+        return await this.showResult(doc, buildMessage(mode, includeMargin, includeLOGO, includeEndorsement, includeBleed, logoIndices) + colorNote);
       }, name);
     } finally {
       this.busy = false;
