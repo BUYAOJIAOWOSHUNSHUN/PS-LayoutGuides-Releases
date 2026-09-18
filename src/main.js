@@ -351,6 +351,7 @@ function refresh(explicit) {
     // 文档没变时，聚焦中或编辑过的框不能回写，否则用户输入会被冲掉。
     if (changed) {
       for (let i = 0; i < SIZE_FIELDS.length; i++) sizeDirty[SIZE_FIELDS[i]] = false;
+      sizeLastEdited = null;   // 文档已变（撤销/修改成功），联动方向也作废
     }
     const keepUserInput = field => !changed && (sizeDirty[field] || sizeFocus === field);
     // 图片大小：宽/高按当前单位换算显示，分辨率固定 PPI。
@@ -478,6 +479,10 @@ function buildUnitPicker(pickerId, onChange) {
 // （撤销 / 确认修改成功，两种都会让快照签名变化）之前也不回写。
 const sizeDirty = {};
 let sizeFocus = null;
+// 锁定比例时「以谁为准」：最后编辑的是宽还是高（v1.9.8 修复）。
+// 之前永远保留宽、按比例重算高 —— 用户只改高度时会被拉回原比例，
+// 请求尺寸 = 原尺寸，PS 无事可做，表现就是「点确认修改不动、数值弹回去」。
+let sizeLastEdited = null;
 
 function readSizeValue(field) {
   return String(el(field).value || "").trim();
@@ -625,8 +630,15 @@ async function applyImageSize() {
   let widthPx = Math.round(unitToPixels(widthValue, imageUnit, resolution));
   let heightPx = Math.round(unitToPixels(heightValue, imageUnit, resolution));
   if (imageLock && aspectRatio > 0) {
-    heightPx = Math.round(widthPx / aspectRatio);
-    writeSizeValue("imageHeight", formatUnitValue(heightPx, imageUnit, resolution));
+    // 锁定比例 = 以**最后编辑的一边**为准联动另一边（和 PS 图像大小对话框一致）：
+    // 改高 → 宽按比例走；改宽（或没动过）→ 高按比例走。
+    if (sizeLastEdited === "imageHeight") {
+      widthPx = Math.round(heightPx * aspectRatio);
+      writeSizeValue("imageWidth", formatUnitValue(widthPx, imageUnit, resolution));
+    } else {
+      heightPx = Math.round(widthPx / aspectRatio);
+      writeSizeValue("imageHeight", formatUnitValue(heightPx, imageUnit, resolution));
+    }
   }
   disableAll(true);
   status("正在修改图片大小…");
@@ -696,6 +708,7 @@ function restoreImageSize() {
   for (const field of ["imageWidth", "imageHeight", "imageResolution"]) {
     sizeDirty[field] = false;
   }
+  sizeLastEdited = null;
   if (sizeFocus === "imageWidth" || sizeFocus === "imageHeight" || sizeFocus === "imageResolution") sizeFocus = null;
   status("已还原为文档当前数值。");
 }
@@ -813,16 +826,30 @@ function tidyMessage(text) {
   });
 }
 
-// 把 UXP 的英文网络错误翻成人话：页脚空间小，也不该用一串英文吓用户。
-// 触发原因常见三种：网络波动 / 防火墙拦截 GitHub / 未登录 API 每小时 60 次的限流。
-function friendlyUpdateError(text) {
-  if (/network request failed/i.test(text)) {
-    return "网络请求失败：可能是网络波动或防火墙拦截了 GitHub，稍后再试（不影响已装版本使用）。";
-  }
-  if (text.indexOf("403") >= 0) {
-    return "GitHub 拒绝了请求（403）：可能是访问频率超限，一小时后再试。";
-  }
-  return "检查更新失败：" + text;
+// 检查更新失败（网络波动 / 防火墙拦截 GitHub / API 限流）：
+// 红色提示「更新失败，请手动下载更新。」——「下载更新」是链接（悬停下划线+高亮），
+// 点击直接在浏览器打开 GitHub 插件介绍页（仓库主页，README 里有最新版下载直链）。
+// 之前这里放一长串英文/中文解释，页脚窄、折三行还顶到版权名（真机截图反馈，v1.9.8 换掉）。
+function showManualDownloadStatus() {
+  const node = el("updateStatus");
+  while (node.firstChild) node.removeChild(node.firstChild);
+  node.appendChild(document.createTextNode("更新失败，请手动"));
+  const link = document.createElement("span");
+  link.className = "status-link";
+  link.textContent = "下载更新";
+  link.title = "在浏览器打开 GitHub 插件页面，手动下载最新版本";
+  link.addEventListener("click", async () => {
+    try {
+      await shell.openExternal("https://github.com/" + REPO);
+      setUpdateStatus("已在浏览器中打开 GitHub 插件页面，下载最新安装包覆盖即可。");
+    } catch (error) {
+      console.error(error);
+      setUpdateStatus("打开浏览器失败，请手动访问 github.com/" + REPO, true);
+    }
+  });
+  node.appendChild(link);
+  node.appendChild(document.createTextNode("。"));
+  node.className = "muted error-text";
 }
 
 // 没有内容时整行收起：页脚只在真正有更新消息时才多占一行，
@@ -880,7 +907,7 @@ async function checkUpdate() {
     }
   } catch (error) {
     console.error(error);
-    setUpdateStatus(friendlyUpdateError(errorText(error)), true);
+    showManualDownloadStatus();
   } finally {
     setDisabled("checkUpdate", false);
   }
@@ -953,6 +980,13 @@ function start() {
     for (const field of SIZE_FIELDS) {
       const valueEl = el(field);
       valueEl.addEventListener("keydown", event => onSizeKeydown(field, event));
+      // 用户真的输入过 = dirty：失焦后轮询也不能冲掉输入（v1.9.6 换真输入框时丢了这条，
+      // 只有聚焦保护在撑着 —— 点「确认修改」慢一步输入就被刷新回写）。
+      // 宽/高另记 sizeLastEdited，锁定比例时按它决定联动方向。
+      valueEl.addEventListener("input", () => {
+        sizeDirty[field] = true;
+        if (field === "imageWidth" || field === "imageHeight") sizeLastEdited = field;
+      });
       // 焦点跟踪给 refresh() 的编辑保护用：聚焦中的框不能被轮询回写。
       valueEl.addEventListener("focus", () => { sizeFocus = field; });
       valueEl.addEventListener("blur", () => { if (sizeFocus === field) sizeFocus = null; });
