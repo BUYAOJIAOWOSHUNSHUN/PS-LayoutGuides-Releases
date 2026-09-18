@@ -15,7 +15,7 @@ const BLEED_FIELDS = ["top", "bottom", "left", "right"];
 const BLEED_LABELS = { top: "上", bottom: "下", left: "左", right: "右" };
 const MODE_BUTTONS = ["update", "logo", "endorsement", "bleed"];
 // 三种生成按钮位于页签内容之外，两页真正共用，避免尺寸与事件不同步。
-const ALL_BUTTONS = MODE_BUTTONS.concat(["clear", "visibility", "applyImageSize", "applyCanvasSize", "restoreImageSize"]);
+const ALL_BUTTONS = MODE_BUTTONS.concat(["clear", "visibility", "applyImageSize", "applyCanvasSize", "restoreImageSize", "modeRGB", "modeCMYK"]);
 
 let currentTab = "screen";
 let bleedLocked = true;         // 出血四边默认锁定（老大要求）
@@ -326,6 +326,7 @@ function refresh(explicit) {
       lastDocWidth = null;
       lastDocHeight = null;
       aspectRatio = 1;
+      renderDocMode("");
       el("documentName").textContent = "请打开 Photoshop 文档";
       el("dimensions").textContent = "以整个文档画布为基准";
       el("bleedGuideState").textContent = "尚未创建";
@@ -344,7 +345,8 @@ function refresh(explicit) {
     lastDocHeight = l.height;
     aspectRatio = l.width / l.height || 1;
     el("documentName").textContent = snapshot.name;
-    el("dimensions").textContent = px(l.width) + " × " + px(l.height) + " · " + format(snapshot.resolution) + " PPI";
+    el("dimensions").textContent = px(l.width) + " × " + px(l.height) + " · " + format(snapshot.resolution) + " PPI · " + snapshot.mode;
+    renderDocMode(snapshot.mode);
     // 文档变了（切换 / 撤销 / 确认修改成功）就以文档为准，清掉编辑标记；
     // 文档没变时，聚焦中或编辑过的框不能回写，否则用户输入会被冲掉。
     if (changed) {
@@ -698,6 +700,37 @@ function restoreImageSize() {
   status("已还原为文档当前数值。");
 }
 
+// 颜色模式芯片：高亮文档当前模式（非 RGB/CMYK 的模式两个都不亮）。
+function renderDocMode(mode) {
+  el("modeRGB").className = "mode-option" + (mode === "RGB" ? " active" : "");
+  el("modeCMYK").className = "mode-option" + (mode === "CMYK" ? " active" : "");
+}
+
+// 点击 RGB/CMYK 芯片：把文档转换成对应颜色模式（已是该模式则只提示，不动文档）。
+async function changeDocMode(mode) {
+  if (service.busy) return;
+  const doc = host.active();
+  if (!doc) { status("当前没有打开的文档。", true); return; }
+  let current = "";
+  try { current = host.getMode(doc); } catch (error) { console.error("读取颜色模式失败:", error); }
+  if (current === mode) { status("当前文档已经是 " + mode + " 模式。"); return; }
+  disableAll(true);
+  status("正在转换为 " + mode + " 模式…");
+  let failed = false;
+  let message;
+  try {
+    await host.modal(() => host.changeMode(doc, mode), "转换颜色模式");
+    message = "已转换为 " + mode + " 模式。";
+  } catch (error) {
+    console.error(error);
+    message = "颜色模式转换失败：" + errorText(error);
+    failed = true;
+  } finally {
+    refresh(false);
+    status(message, failed);
+  }
+}
+
 /* ---------- 执行（辅助线） ---------- */
 
 async function run(mode) {
@@ -808,7 +841,7 @@ function releasePage() {
 }
 
 function showReleaseButton(show) {
-  el("openRelease").className = show ? "release-button" : "release-button hidden";
+  el("openRelease").className = show ? "release-link" : "release-link hidden";
 }
 
 // 自动安装走不通时的兜底出口：直接打开 GitHub 发布页手动下载。
@@ -874,8 +907,8 @@ async function installUpdate() {
     showReleaseButton(false);   // 安装成功后收起「打开发布页」（之前忘了收，成功后还挂在页脚，用户误以为更新失败）
   } catch (error) {
     console.error(error);
-    // 常见于插件目录不可写（例如在 C:\Program Files 下）。保留发布页入口让用户手动覆盖。
-    setUpdateStatus("更新失败：" + errorText(error) + " 可点下方按钮到发布页手动下载覆盖。", true);
+    // 常见于插件目录不可写（例如在 C:\Program Files 下）。保留手动更新入口让用户自行下载覆盖。
+    setUpdateStatus("更新失败：" + errorText(error) + " 可点下方「手动更新」下载覆盖。", true);
     showReleaseButton(true);
   } finally {
     setDisabled("installUpdate", false);
@@ -945,6 +978,9 @@ function start() {
     el("applyImageSize").title = "按当前值修改图片大小（executeAsModal 包成一步）";
     bindAction(el("restoreImageSize"), restoreImageSize);
     el("restoreImageSize").title = "放弃当前输入，恢复为文档的实际数值";
+    // 颜色模式芯片：点击把文档转换成对应模式。
+    bindAction(el("modeRGB"), () => { void changeDocMode("RGB"); });
+    bindAction(el("modeCMYK"), () => { void changeDocMode("CMYK"); });
     el("applyCanvasSize").addEventListener("click", () => { void applyCanvasSize(); });
     el("applyCanvasSize").title = "按当前值修改画布大小（executeAsModal 包成一步）";
     el("clear").addEventListener("click", () => { void run("clear"); });
@@ -953,7 +989,7 @@ function start() {
     el("visibility").title = "隐藏辅助线";
     el("checkUpdate").addEventListener("click", () => { void checkUpdate(); });
     el("installUpdate").addEventListener("click", () => { void installUpdate(); });
-    el("openRelease").addEventListener("click", () => { void openRelease(); });
+    bindAction(el("openRelease"), () => { void openRelease(); });
     initialized = true;
   }
   setDisabled("visibility", false);
