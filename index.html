@@ -8,7 +8,9 @@
 <body>
   <div class="panel">
     <header class="toolbar">
-      <div class="heading">品牌版式标准规范 <span class="version" id="headerVersion">1.8.2</span></div>
+      <div class="heading">品牌版式标准规范</div>
+      <!-- 状态条从页脚搬到标题下面：页脚要压到最薄，而状态是每次操作都要看的东西。 -->
+      <div id="status" role="status" aria-live="polite">正在启动插件…</div>
       <div class="brand-block">
         <div id="brandRow" class="brand-row" aria-label="品牌标准"></div>
       </div>
@@ -25,25 +27,58 @@
       </div>
 
       <section id="pageScreen" class="page">
-        <div class="section-heading"><span class="section-title">尺寸与比例</span><span class="section-caption">当前品牌标准</span></div>
-        <div class="parameter-card">
-          <div class="facts">
-            <div class="row"><span>方向</span><strong id="orientation">—</strong></div>
-            <div class="row"><span>长短边比</span><strong id="ratio">—</strong></div>
+        <!-- 原来的「尺寸与比例」模块整个被这两个编辑器替代：图片大小 / 画布大小。
+             两张卡**左右并排**（不是上下堆），各带自己的标题和「确认修改」按钮。
+             面板定宽 420px，一张卡约 194px，所以单位列必须用短写法
+             （像素 / PPI / 厘米），全称放在 title 里悬停可见。 -->
+        <div class="size-columns">
+          <!-- 图片大小：模仿 PS「图像大小」对话框：锁链 + 宽/高/分辨率 + 确认修改 -->
+          <div class="parameter-card size-card">
+            <div class="size-card-title">图片大小</div>
+            <div class="size-row">
+              <span id="imageLock" class="size-lock locked" role="button" tabindex="0" aria-pressed="true" aria-label="锁定宽高比" title="锁定宽高比（点一下可解锁）">
+                <img class="icon-chain" src="assets/icon-chain.png" alt="锁链">
+              </span>
+              <span class="size-label">宽</span>
+              <span id="imageWidth" class="size-value" role="textbox" tabindex="0" aria-label="图片宽度">0</span>
+              <span class="size-unit" title="像素">像素</span>
+            </div>
+            <div class="size-row">
+              <span class="size-lock placeholder"></span>
+              <span class="size-label">高</span>
+              <span id="imageHeight" class="size-value" role="textbox" tabindex="0" aria-label="图片高度">0</span>
+              <span class="size-unit" title="像素">像素</span>
+            </div>
+            <div class="size-row">
+              <span class="size-lock placeholder"></span>
+              <span class="size-label">分辨率</span>
+              <span id="imageResolution" class="size-value" role="textbox" tabindex="0" aria-label="图片分辨率">0</span>
+              <span class="size-unit" title="像素/英寸">PPI</span>
+            </div>
+            <div class="size-apply-row">
+              <sp-button id="applyImageSize" variant="cta" class="compact-button" disabled><span class="button-label">确认修改</span></sp-button>
+            </div>
           </div>
-          <section class="metric">
-            <div class="metric-row"><label>版心边距 X</label><strong id="marginX" class="value">—</strong></div>
-            <small id="marginRule">—</small>
-          </section>
-          <section class="metric">
-            <div class="metric-row"><label>LOGO 建议高度</label><strong id="logoHeight" class="value">—</strong></div>
-            <small id="logoRule">—</small>
-            <small id="logoSafety">—</small>
-          </section>
-          <section class="metric last-metric">
-            <div class="metric-row"><label>背书参考高度</label><strong id="endorsementHeight" class="value">—</strong></div>
-            <small id="endorsementRule">—</small>
-          </section>
+
+          <!-- 画布大小：模仿 PS「画布大小」对话框：9 格锚点 + 宽/高 + 确认修改 -->
+          <div class="parameter-card size-card">
+            <div class="size-card-title">画布大小</div>
+            <div class="size-row">
+              <div id="anchorGrid" class="anchor-grid" role="radiogroup" aria-label="锚点位置"></div>
+              <span class="size-label">宽</span>
+              <span id="canvasWidth" class="size-value" role="textbox" tabindex="0" aria-label="画布宽度">0</span>
+              <span class="size-unit" title="厘米">厘米</span>
+            </div>
+            <div class="size-row">
+              <span class="size-lock placeholder"></span>
+              <span class="size-label">高</span>
+              <span id="canvasHeight" class="size-value" role="textbox" tabindex="0" aria-label="画布高度">0</span>
+              <span class="size-unit" title="厘米">厘米</span>
+            </div>
+            <div class="size-apply-row">
+              <sp-button id="applyCanvasSize" variant="cta" class="compact-button" disabled><span class="button-label">确认修改</span></sp-button>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -56,48 +91,62 @@
           </div>
         </div>
         <div class="parameter-card bleed-card">
-          <div class="bleed-body">
-            <div id="lock" class="lock-button unlocked" role="button" tabindex="0" aria-label="锁定四边同步" aria-pressed="false">
-              <img id="lockIcon" class="icon-lock" src="assets/icon-unlock.png" alt="">
-            </div>
-            <div class="bleed-grid">
+          <!-- 锁定按钮放在十字正中（左/右之间）：位置即含义 —— 锁住时四边联动。
+               数值框是自绘的（span + 键盘事件），不是 sp-textfield：
+               UXP 的 sp-textfield 内部底色写死、CSS 和 quiet 变体都盖不掉，
+               真机上就是一块黑。自绘之后底色完全由 styles.css 说了算。
+               十字排布：上在上、下在下、左/右分居中间行两侧，锁在正中。
+               行结构是普通横向 flex，不能用 CSS Grid（UXP 真机不支持）。 -->
+          <div class="bleed-grid">
+            <div class="bleed-cross-row bleed-cross-center">
               <div class="bleed-cell">
                 <span class="bleed-label">上</span>
                 <div class="bleed-input">
-                  <div class="stepper"><div id="step-up-top" class="step-up" role="button" tabindex="0" aria-label="上出血增加 1"><img class="chevron" src="assets/chevron-up.png" alt=""></div><div id="step-down-top" class="step-down" role="button" tabindex="0" aria-label="上出血减少 1"><img class="chevron" src="assets/chevron-down.png" alt=""></div></div><sp-textfield id="bleed-top" quiet placeholder="0" aria-label="上出血"></sp-textfield><span class="bleed-unit" id="unit-top">mm</span>
+                  <span id="bleed-top" class="bleed-value" role="textbox" tabindex="0" aria-label="上出血">0</span><div class="stepper"><div id="step-up-top" class="step-up" role="button" tabindex="0" aria-label="上出血增加 1"><img class="chevron" src="assets/chevron-up.png" alt=""></div><div id="step-down-top" class="step-down" role="button" tabindex="0" aria-label="上出血减少 1"><img class="chevron" src="assets/chevron-down.png" alt=""></div></div><span class="bleed-unit" id="unit-top">mm</span>
                 </div>
               </div>
-              <div class="bleed-cell">
-                <span class="bleed-label">下</span>
-                <div class="bleed-input">
-                  <div class="stepper"><div id="step-up-bottom" class="step-up" role="button" tabindex="0" aria-label="下出血增加 1"><img class="chevron" src="assets/chevron-up.png" alt=""></div><div id="step-down-bottom" class="step-down" role="button" tabindex="0" aria-label="下出血减少 1"><img class="chevron" src="assets/chevron-down.png" alt=""></div></div><sp-textfield id="bleed-bottom" quiet placeholder="0" aria-label="下出血"></sp-textfield><span class="bleed-unit" id="unit-bottom">mm</span>
-                </div>
-              </div>
+            </div>
+            <div class="bleed-cross-row bleed-cross-mid">
               <div class="bleed-cell">
                 <span class="bleed-label">左</span>
                 <div class="bleed-input">
-                  <div class="stepper"><div id="step-up-left" class="step-up" role="button" tabindex="0" aria-label="左出血增加 1"><img class="chevron" src="assets/chevron-up.png" alt=""></div><div id="step-down-left" class="step-down" role="button" tabindex="0" aria-label="左出血减少 1"><img class="chevron" src="assets/chevron-down.png" alt=""></div></div><sp-textfield id="bleed-left" quiet placeholder="0" aria-label="左出血"></sp-textfield><span class="bleed-unit" id="unit-left">mm</span>
+                  <span id="bleed-left" class="bleed-value" role="textbox" tabindex="0" aria-label="左出血">0</span><div class="stepper"><div id="step-up-left" class="step-up" role="button" tabindex="0" aria-label="左出血增加 1"><img class="chevron" src="assets/chevron-up.png" alt=""></div><div id="step-down-left" class="step-down" role="button" tabindex="0" aria-label="左出血减少 1"><img class="chevron" src="assets/chevron-down.png" alt=""></div></div><span class="bleed-unit" id="unit-left">mm</span>
                 </div>
+              </div>
+              <div id="lock" class="lock-button unlocked" role="button" tabindex="0" aria-label="锁定四边同步" aria-pressed="false">
+                <img id="lockIcon" class="icon-lock" src="assets/icon-unlock.png" alt="">
               </div>
               <div class="bleed-cell">
                 <span class="bleed-label">右</span>
                 <div class="bleed-input">
-                  <div class="stepper"><div id="step-up-right" class="step-up" role="button" tabindex="0" aria-label="右出血增加 1"><img class="chevron" src="assets/chevron-up.png" alt=""></div><div id="step-down-right" class="step-down" role="button" tabindex="0" aria-label="右出血减少 1"><img class="chevron" src="assets/chevron-down.png" alt=""></div></div><sp-textfield id="bleed-right" quiet placeholder="0" aria-label="右出血"></sp-textfield><span class="bleed-unit" id="unit-right">mm</span>
+                  <span id="bleed-right" class="bleed-value" role="textbox" tabindex="0" aria-label="右出血">0</span><div class="stepper"><div id="step-up-right" class="step-up" role="button" tabindex="0" aria-label="右出血增加 1"><img class="chevron" src="assets/chevron-up.png" alt=""></div><div id="step-down-right" class="step-down" role="button" tabindex="0" aria-label="右出血减少 1"><img class="chevron" src="assets/chevron-down.png" alt=""></div></div><span class="bleed-unit" id="unit-right">mm</span>
+                </div>
+              </div>
+            </div>
+            <div class="bleed-cross-row bleed-cross-center">
+              <div class="bleed-cell">
+                <span class="bleed-label">下</span>
+                <div class="bleed-input">
+                  <span id="bleed-bottom" class="bleed-value" role="textbox" tabindex="0" aria-label="下出血">0</span><div class="stepper"><div id="step-up-bottom" class="step-up" role="button" tabindex="0" aria-label="下出血增加 1"><img class="chevron" src="assets/chevron-up.png" alt=""></div><div id="step-down-bottom" class="step-down" role="button" tabindex="0" aria-label="下出血减少 1"><img class="chevron" src="assets/chevron-down.png" alt=""></div></div><span class="bleed-unit" id="unit-bottom">mm</span>
                 </div>
               </div>
             </div>
           </div>
+          <!-- 状态和预览两行放左列；右侧「清零」弱化成灰字小按钮，「创建出血线」是主按钮放大突出。 -->
           <div class="bleed-create-row">
-            <span id="bleedGuideState" class="muted">尚未创建</span>
-            <sp-button id="bleed" variant="cta" class="compact-button" disabled><span class="button-label">创建出血线</span></sp-button>
+            <div class="bleed-create-info">
+              <span id="bleedGuideState" class="muted">尚未创建</span>
+              <div id="bleedPreview" class="muted">按文档分辨率换算</div>
+            </div>
+            <sp-button id="bleedReset" variant="secondary" class="quiet-button" aria-label="四个出血值全部清零"><span class="button-label">清零</span></sp-button>
+            <sp-button id="bleed" variant="cta" class="compact-button wide-cta" disabled><span class="button-label">创建出血线</span></sp-button>
           </div>
-          <div id="bleedPreview" class="muted">按文档分辨率换算</div>
         </div>
       </section>
 
       <!-- 共用一组按钮：两个页签的宽度、高度与间距始终一致。 -->
       <section class="guide-section">
-        <div class="section-heading"><span class="section-title">生成辅助线</span><span class="section-caption">按当前品牌标准</span></div>
+        <div class="section-heading"><span class="section-title">生成辅助线</span></div>
         <div class="guide-actions">
           <sp-button id="update" variant="cta" class="guide-button" disabled><span class="button-label">版心线</span></sp-button>
           <sp-button id="logo" variant="cta" class="guide-button" disabled><span class="button-label">LOGO 高度线</span></sp-button>
@@ -119,14 +168,19 @@
           </span>
         </sp-button>
       </div>
-      <small class="delete-note">删除会清空当前文档全部辅助线，含手动添加的线。</small>
     </div>
 
+    <!-- 版本号已经跟在标题后面了，页脚只留更新入口和版权，尽量压薄。 -->
     <footer class="panel-footer">
-      <div id="status" role="status" aria-live="polite">正在启动插件…</div>
       <div class="update-row">
-        <sp-button id="checkUpdate" variant="secondary" class="update-button"><span class="button-label">检查更新</span></sp-button>
-        <span class="signature">v<span id="versionText">1.8.2</span> · ©蛋生品牌设计</span>
+        <!-- UXP 给 sp-button 内置 auto 外边距且压不过它的内部样式（margin:0 无效，真机实测）。
+             包一层宽度由内容决定的 div，容器里没有自由空间，auto margin 自然归零 —— 结构级解决。 -->
+        <div class="update-left">
+          <sp-button id="checkUpdate" variant="secondary" class="update-button"><span class="button-label">检查更新</span></sp-button>
+          <!-- 版本号跟着「检查更新」走：查更新时一眼能对上「本地是什么版本、远端是什么版本」。 -->
+          <span id="footerVersion" class="footer-version">1.8.5</span>
+        </div>
+        <span class="signature">©蛋生品牌设计</span>
       </div>
       <sp-button id="installUpdate" variant="cta" class="primary hidden">下载并安装更新</sp-button>
       <sp-button id="openRelease" variant="secondary" class="release-button hidden">打开发布页</sp-button>
