@@ -435,6 +435,9 @@ const EXT_PRESETS = [
   "FF0000", "FF8000", "FFE000", "00B050", "00B0F0", "0070C0", "7030A0", "FF00FF"
 ];
 let extPopup = null;
+let extHue = 0;              // 取色器当前色相（0-359）
+let extSV = { s: 1, v: 1 };  // 取色器当前饱和度 / 明度
+let extSvSquare = null;      // SV 方块元素（切色相时要更新渐变底色）
 
 function hexToRgb(hex) {
   const m = /^#?([0-9a-fA-F]{6})$/.exec(String(hex || "").trim());
@@ -447,17 +450,43 @@ function rgbToHex(rgb) {
   return ((1 << 24) + (rgb.r << 16) + (rgb.g << 8) + rgb.b).toString(16).slice(1).toUpperCase();
 }
 
+// HSV → RGB（h 0-359，s/v 0-1）。维基百科标准公式：f(n) = v − v·s·max(0, min(k, 4−k, 1))。
+function hsvToRgb(h, s, v) {
+  const f = n => {
+    const k = (n + h / 60) % 6;
+    return v - v * s * Math.max(0, Math.min(k, 4 - k, 1));
+  };
+  return { r: Math.round(f(5) * 255), g: Math.round(f(3) * 255), b: Math.round(f(1) * 255) };
+}
+
+function rgbToHsv(rgb) {
+  const r = rgb.r / 255, g = rgb.g / 255, b = rgb.b / 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const d = max - min;
+  let h = 0;
+  if (d > 0) {
+    if (max === r) h = ((g - b) / d) % 6;
+    else if (max === g) h = (b - r) / d + 2;
+    else h = (r - g) / d + 4;
+    h = Math.round(h * 60);
+    if (h < 0) h += 360;
+  }
+  return { h: h, s: max === 0 ? 0 : d / max, v: max };
+}
+
 function closeExtPopup() {
   if (extPopup && extPopup.parentNode) extPopup.parentNode.removeChild(extPopup);
   extPopup = null;
+  extSvSquare = null;
 }
 
-function applyCustomExtColor(rgb) {
+function applyCustomExtColor(rgb, keepOpen) {
   canvasExtension = "other";
   canvasCustomColor = rgb;
   extPickerApi.set("other");
   renderExtSwatch();
-  closeExtPopup();
+  if (!keepOpen) closeExtPopup();
   status("画布扩展颜色：自定 #" + rgbToHex(rgb) + "。");
 }
 
@@ -466,6 +495,50 @@ function toggleExtPopup() {
   const wrap = el("canvasExtSwatchWrap");
   extPopup = document.createElement("div");
   extPopup.className = "ext-popup";
+  extPopup.addEventListener("click", event => event.stopPropagation());
+  // 起点色相 / 饱和明度取自当前颜色，让选色面板开在当前颜色附近。
+  const startHsv = rgbToHsv(effectiveExtColor());
+  extHue = startHsv.h;
+  extSV = { s: startHsv.s, v: startHsv.v };
+  // ---- SV 选色区 + 色相条（模仿 PS 拾色器的选色布局，点一下即选）----
+  const pickRow = document.createElement("div");
+  pickRow.className = "ext-popup-row";
+  const square = document.createElement("div");
+  square.className = "ext-popup-sv";
+  const squareFill = document.createElement("div");
+  squareFill.className = "ext-popup-sv-fill";
+  square.appendChild(squareFill);
+  extSvSquare = square;
+  const updateSv = () => {
+    square.style.background = "linear-gradient(to right, #ffffff, hsl(" + extHue + ", 100%, 50%))";
+  };
+  updateSv();
+  const pickSv = event => {
+    const rect = square.getBoundingClientRect();
+    const x = Number.isFinite(event.clientX) ? event.clientX - rect.left : event.offsetX;
+    const y = Number.isFinite(event.clientY) ? event.clientY - rect.top : event.offsetY;
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    extSV = {
+      s: Math.max(0, Math.min(1, x / Math.max(1, rect.width))),
+      v: 1 - Math.max(0, Math.min(1, y / Math.max(1, rect.height)))
+    };
+    applyCustomExtColor(hsvToRgb(extHue, extSV.s, extSV.v), true);
+  };
+  square.addEventListener("click", event => { event.stopPropagation(); pickSv(event); });
+  pickRow.appendChild(square);
+  const hueBar = document.createElement("div");
+  hueBar.className = "ext-popup-hue";
+  const pickHue = event => {
+    const rect = hueBar.getBoundingClientRect();
+    const y = Number.isFinite(event.clientY) ? event.clientY - rect.top : event.offsetY;
+    if (!Number.isFinite(y)) return;
+    extHue = Math.max(0, Math.min(359, Math.round(y / Math.max(1, rect.height) * 360)));
+    updateSv();
+    applyCustomExtColor(hsvToRgb(extHue, extSV.s, extSV.v), true);
+  };
+  hueBar.addEventListener("click", event => { event.stopPropagation(); pickHue(event); });
+  pickRow.appendChild(hueBar);
+  extPopup.appendChild(pickRow);
   // 预设色板：两行各 8 格，点一下立即应用。
   for (let row = 0; row < 2; row++) {
     const rowEl = document.createElement("div");
@@ -492,8 +565,6 @@ function toggleExtPopup() {
   const field = document.createElement("sp-textfield");
   field.className = "ext-popup-input";
   field.setAttribute("aria-label", "十六进制颜色");
-  const start = effectiveExtColor();
-  field.value = start ? "#" + rgbToHex(start) : "#FFFFFF";
   const apply = document.createElement("sp-button");
   apply.setAttribute("variant", "cta");
   apply.className = "ext-popup-apply";
@@ -516,6 +587,9 @@ function toggleExtPopup() {
   hexRow.appendChild(apply);
   extPopup.appendChild(hexRow);
   wrap.appendChild(extPopup);
+  // 起始十六进制值在 append 之后再赋（预览的替身组件 append 时才升级，提前赋会被吞）。
+  const start = effectiveExtColor();
+  field.value = start ? "#" + rgbToHex(start) : "#FFFFFF";
 }
 
 function unitToPixels(value, unit, ppi) {
@@ -738,6 +812,19 @@ function selectAnchor(id) {
 }
 
 /* ---------- 执行（图片大小 / 画布大小） ---------- */
+
+// UXP 的 sp-textfield 是黑盒组件：真机上 keydown 的 preventDefault **拦不住**
+// 内部输入框（按键直达控件内部，字母照样进得来——真机实锤：画布宽度能打出 sdad）。
+// 所以数字过滤改在 input 事件里做：把值洗一遍，只留数字和第一个小数点。
+// 代价是洗完光标跳到末尾 —— 数值框可接受。
+function sanitizeNumberText(raw) {
+  let text = String(raw == null ? "" : raw).replace(/[^0-9.]/g, "");
+  const first = text.indexOf(".");
+  if (first >= 0) {
+    text = text.slice(0, first + 1) + text.slice(first + 1).replace(/\./g, "");
+  }
+  return text;
+}
 
 // 把数字字符串解析为正数；解析失败返回 null。
 function parsePositive(raw) {
@@ -1156,6 +1243,11 @@ function start() {
       valueEl.addEventListener("keydown", event => onBleedKeydown(field, event));
       // 失焦/回车：读框内值校验提交；Esc 由 keydown 里还原。
       valueEl.addEventListener("blur", () => commitBleedEdit(field));
+      // 真机上 keydown 拦不住字母（见 sanitizeNumberText 注释），输入时洗一遍。
+      valueEl.addEventListener("input", () => {
+        const cleaned = sanitizeNumberText(valueEl.value);
+        if (cleaned !== valueEl.value) valueEl.value = cleaned;
+      });
       valueEl.setAttribute("title", BLEED_LABELS[field] + "出血：直接输入数字，回车或点别处生效");
       bindAction(el("step-up-" + field), () => stepBleed(field, 1));
       bindAction(el("step-down-" + field), () => stepBleed(field, -1));
@@ -1172,6 +1264,9 @@ function start() {
       // 只有聚焦保护在撑着 —— 点「确认修改」慢一步输入就被刷新回写）。
       // 宽/高另记 sizeLastEdited，锁定比例时按它决定联动方向。
       valueEl.addEventListener("input", () => {
+        // 真机上 keydown 拦不住字母（见 sanitizeNumberText 注释），输入时洗一遍。
+        const cleaned = sanitizeNumberText(valueEl.value);
+        if (cleaned !== valueEl.value) valueEl.value = cleaned;
         sizeDirty[field] = true;
         if (field === "imageWidth" || field === "imageHeight") sizeLastEdited = field;
       });
