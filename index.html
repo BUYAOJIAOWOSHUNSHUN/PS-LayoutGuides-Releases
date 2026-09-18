@@ -17,15 +17,22 @@
         <div id="brandRow" class="brand-row" aria-label="品牌标准"></div>
       </div>
       <div class="tabs" role="tablist">
-        <div id="tabScreen" class="tab active" role="tab" tabindex="0" aria-selected="true">屏幕标准 <span class="tab-tag">RGB</span></div>
-        <div id="tabPrint" class="tab" role="tab" tabindex="0" aria-selected="false">印刷品 <span class="tab-tag">CMYK</span></div>
+        <div id="tabScreen" class="tab active" role="tab" tabindex="0" aria-selected="true">电子显示设备标准 <span class="tab-tag">RGB</span></div>
+        <div id="tabPrint" class="tab" role="tab" tabindex="0" aria-selected="false">印刷制作品标准 <span class="tab-tag">CMYK</span></div>
       </div>
     </header>
 
     <div class="scroll-content">
       <div class="document-card">
-        <div id="documentName" class="document-name">请打开 Photoshop 文档</div>
-        <div id="dimensions" class="muted">以整个文档画布为基准</div>
+        <div class="document-info">
+          <div id="documentName" class="document-name">请打开 Photoshop 文档</div>
+          <div id="dimensions" class="muted">以整个文档画布为基准</div>
+        </div>
+        <!-- 颜色模式显示 + 切换：高亮的是文档当前模式，点另一个直接转换文档模式。 -->
+        <div class="mode-switch" aria-label="文档颜色模式">
+          <div id="modeRGB" class="mode-option" role="button" tabindex="0">RGB</div>
+          <div id="modeCMYK" class="mode-option" role="button" tabindex="0">CMYK</div>
+        </div>
       </div>
 
       <section id="pageScreen" class="page">
@@ -198,7 +205,7 @@
         <div class="update-left">
           <sp-button id="checkUpdate" variant="secondary" class="update-button"><span class="button-label">检查更新</span></sp-button>
           <!-- 版本号跟着「检查更新」走：查更新时一眼能对上「本地是什么版本、远端是什么版本」。 -->
-          <span id="footerVersion" class="footer-version">v1.9.6</span>
+          <span id="footerVersion" class="footer-version">v1.9.7</span>
         </div>
         <!-- 更新状态（发现新版本 / 网络错误等）跟在版本号后面；版权名固定最右。
              space-between + 状态行 flex:1：状态显示时贴着版本号，收起时版权自然靠右。 -->
@@ -206,7 +213,8 @@
         <span class="signature">©蛋生品牌设计</span>
       </div>
       <sp-button id="installUpdate" variant="cta" class="primary hidden">下载并安装更新</sp-button>
-      <sp-button id="openRelease" variant="secondary" class="release-button hidden">打开发布页</sp-button>
+      <!-- 手动更新：链接样式的文字按钮（悬停下划线+高亮），点了打开 GitHub 发布页自行下载覆盖。 -->
+      <div id="openRelease" class="release-link hidden" role="button" tabindex="0">手动更新</div>
     </footer>
   </div>
   <script src="bootstrap.js"></script>
