@@ -275,7 +275,7 @@ class GuideService {
 }
 
 function buildMessage(mode, includeMargin, includeLOGO, includeEndorsement, includeBleed, logoIndices) {
-  if (mode === "bleed") return "已更新出血辅助线（自画布边缘向内缩，与版心线同色）。";
+  if (mode === "bleed") return "已更新出血辅助线（自画布边缘向内缩）。";
   const parts = [];
   if (includeLOGO) parts.push("LOGO 高度线" + (logoIndices.length > 1 ? "（含顶部/左侧安全线）" : ""));
   if (includeEndorsement) parts.push("背书参考线（0.3H，另需核对正文大小）");
