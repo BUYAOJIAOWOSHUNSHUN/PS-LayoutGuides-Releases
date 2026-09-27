@@ -1,0 +1,251 @@
+/* Standalone canvas-extension color dialog. Uses flex and static PNG color maps. */
+dialog.cp-dialog {
+  box-sizing: border-box;
+  width: 620px;
+  min-width: 620px;
+  height: 420px;
+  min-height: 420px;
+  max-width: 96vw;
+  max-height: 96vh;
+  margin: auto;
+  padding: 0;
+  overflow: hidden;
+  color: #ededed;
+  background: #303030;
+  border: 1px solid #606060;
+  border-radius: 4px;
+  font-family: Arial, "Microsoft YaHei", sans-serif;
+  font-size: 13px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55);
+}
+
+dialog.cp-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.58);
+}
+
+.cp-shell {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+}
+
+.cp-title {
+  height: 22px;
+  flex: 0 0 22px;
+  color: #f2f2f2;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 22px;
+}
+
+.cp-main {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  flex: 1 1 auto;
+  min-height: 0;
+  margin-top: 8px;
+}
+
+.cp-palette {
+  box-sizing: border-box;
+  width: 308px;
+  height: 280px;
+  flex: 0 0 308px;
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+}
+
+.cp-sv {
+  position: relative;
+  box-sizing: border-box;
+  width: 280px;
+  height: 280px;
+  flex: 0 0 280px;
+  overflow: visible;
+  border: 1px solid #707070;
+  cursor: crosshair;
+}
+
+.cp-sv-mask {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.cp-sv-marker {
+  position: absolute;
+  z-index: 1;
+  width: 14px;
+  height: 14px;
+  box-sizing: border-box;
+  margin-left: -7px;
+  margin-top: -7px;
+  border: 2px solid #ffffff;
+  outline: 1px solid rgba(0, 0, 0, 0.8);
+  pointer-events: none;
+}
+
+.cp-hue {
+  position: relative;
+  box-sizing: border-box;
+  width: 18px;
+  height: 280px;
+  flex: 0 0 18px;
+  margin-left: 10px;
+  border: 1px solid #707070;
+  cursor: pointer;
+}
+
+.cp-hue-strip {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.cp-hue-marker {
+  position: absolute;
+  z-index: 1;
+  left: -3px;
+  right: -3px;
+  height: 3px;
+  margin-top: -2px;
+  box-sizing: border-box;
+  background: #ffffff;
+  border: 1px solid #151515;
+  pointer-events: none;
+}
+
+.cp-controls {
+  box-sizing: border-box;
+  min-width: 0;
+  flex: 1 1 auto;
+  margin-left: 14px;
+}
+
+.cp-previews {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+}
+
+.cp-preview {
+  min-width: 0;
+  flex: 1 1 50%;
+}
+
+.cp-preview + .cp-preview {
+  margin-left: 8px;
+}
+
+.cp-preview-label {
+  margin-bottom: 4px;
+  color: #c9c9c9;
+  font-size: 11px;
+  line-height: 14px;
+}
+
+.cp-swatch {
+  width: 100%;
+  height: 48px;
+  box-sizing: border-box;
+  border: 1px solid #727272;
+}
+
+.cp-swatch-current {
+  border-color: #888888;
+}
+
+.cp-channel-row {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-end;
+  margin-top: 12px;
+}
+
+.cp-channel-cell {
+  box-sizing: border-box;
+  min-width: 0;
+  flex: 1 1 0;
+}
+
+.cp-channel-cell + .cp-channel-cell {
+  margin-left: 7px;
+}
+
+.cp-channel-label {
+  display: block;
+  margin-bottom: 4px;
+  color: #c9c9c9;
+  font-size: 11px;
+  line-height: 14px;
+}
+
+.cp-field-wrap {
+  display: flex;
+  width: 100%;
+  height: 32px;
+  box-sizing: border-box;
+  overflow: visible;
+}
+
+sp-textfield.cp-field {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  height: 32px;
+  min-height: 32px;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  opacity: 1;
+  color: #f5f5f5;
+  font-family: Arial, "Microsoft YaHei", sans-serif;
+  font-size: 13px;
+}
+
+.cp-hex-row {
+  margin-top: 12px;
+}
+
+.cp-actions {
+  display: flex;
+  flex-direction: row;
+  justify-content: flex-end;
+  align-items: center;
+  height: 34px;
+  flex: 0 0 34px;
+  margin-top: 10px;
+}
+
+sp-button.cp-button {
+  width: 88px;
+  min-width: 88px;
+  height: 32px;
+  min-height: 32px;
+  margin: 0;
+}
+
+sp-button.cp-button + sp-button.cp-button {
+  margin-left: 8px;
+}
+
+.cp-cancel {
+  opacity: 0.9;
+}
+
+.cp-confirm {
+  font-weight: 600;
+}

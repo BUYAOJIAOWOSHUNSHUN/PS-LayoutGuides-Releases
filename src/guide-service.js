@@ -6,11 +6,10 @@ const { findBrand } = require("./brands.js");
 
 const EPSILON = 0.02;
 const MODES = ["update", "logo", "endorsement", "bleed", "clear"];
-// 彩色参考线（老大要求）：出血线紫色，版心线 / LOGO 高度线 / 背书线绿色。
-// 走 batchPlay 建带色参考线；PS 不支持时 host 会自动退回默认色并在状态栏提示。
+// 出血洋红；版心、LOGO 高度与背书高度线青色。
 const GUIDE_COLORS = {
-  guide: { r: 0, g: 166, b: 81 },      // 绿
-  bleed: { r: 160, g: 32, b: 240 }     // 紫
+  guide: { r: 74, g: 255, b: 255 },
+  bleed: { r: 255, g: 74, b: 255 }
 };
 const MODE_NAMES = {
   update: "更新版心辅助线",
@@ -34,13 +33,6 @@ function matchesTargets(guides, targets) {
   return remaining.length === 0;
 }
 
-function errorText(error) {
-  if (typeof error === "string" && error.trim()) return error;
-  if (error && typeof error.message === "string" && error.message.trim()) return error.message;
-  try { const value = JSON.stringify(error); if (value && value !== "{}" && value !== "null") return value; } catch (_) {}
-  return "Photoshop 未返回详细错误信息";
-}
-
 // 当前文档已有的辅助线组合，用于「已是最新」提示文案。
 function describeCurrent(includeMargin, includeLOGO, includeEndorsement, includeBleed) {
   const parts = [];
@@ -49,6 +41,13 @@ function describeCurrent(includeMargin, includeLOGO, includeEndorsement, include
   if (includeBleed) parts.push("出血线");
   if (includeMargin) return parts.length ? "版心与 " + parts.join("、") + "已是最新。" : "四条版心辅助线已是最新。";
   return parts.length ? parts.join("、") + "已是最新。" : "没有需要更新的辅助线。";
+}
+
+function errorText(error) {
+  if (typeof error === "string" && error.trim()) return error;
+  if (error && typeof error.message === "string" && error.message.trim()) return error.message;
+  try { const value = JSON.stringify(error); if (value && value !== "{}" && value !== "null") return value; } catch (_) {}
+  return "Photoshop 未返回详细错误信息";
 }
 
 class GuideService {
@@ -210,9 +209,6 @@ class GuideService {
         const targets = canvasTargets.map(t => ({
           direction: t.direction, coordinate: relativeCoordinate(t, origin), color: t.color
         }));
-        if (mode !== "clear" && matchesTargets(owned, targets)) {
-          return await this.showResult(doc, describeCurrent(includeMargin, includeLOGO, includeEndorsement, includeBleed));
-        }
         if (mode === "clear" && !before.length) {
           return { message: "当前文档没有辅助线。" };
         }
@@ -234,11 +230,25 @@ class GuideService {
           for (let index = 0; index < targets.length; index++) {
             checkCancelled();
             const target = targets[index];
-            // 挂了 color 的目标走 batchPlay 建彩色参考线，其余走普通建线。
+            if (!this.host.active() || this.host.active().id !== doc.id) {
+              throw new Error("活动文档已改变，请重新点击操作。");
+            }
+            const beforeAdd = this.host.listGuides(doc);
+            const beforeAddIds = new Set(beforeAdd.map(g => g.id));
             const guide = target.color
               ? await this.host.addColoredGuide(doc, target.direction, target.coordinate, target.color)
               : await this.host.addGuide(doc, target);
-            if (before.some(g => g.id === guide.id) || created.includes(guide.id)) {
+            if (!this.host.active() || this.host.active().id !== doc.id) {
+              throw new Error("活动文档已改变，已中止参考线创建。");
+            }
+            const afterAdd = this.host.listGuides(doc);
+            const addedNow = afterAdd.filter(g => !beforeAddIds.has(g.id));
+            const removedNow = beforeAdd.some(g => !afterAdd.some(a => a.id === g.id));
+            if (removedNow || addedNow.length !== 1 || afterAdd.length !== beforeAdd.length + 1 ||
+                !guide || addedNow[0].id !== guide.id || addedNow[0].docId !== doc.id ||
+                guide.docId !== doc.id || addedNow[0].direction !== target.direction ||
+                Math.abs(addedNow[0].coordinate - target.coordinate) > EPSILON ||
+                before.some(g => g.id === guide.id) || created.includes(guide.id)) {
               throw new Error("新增辅助线 ID 不唯一，已中止更新。");
             }
             createdByIdx[index] = guide.id;
@@ -246,7 +256,8 @@ class GuideService {
           }
           const after = this.host.listGuides(doc);
           const added = after.filter(g => created.includes(g.id));
-          if (after.length !== others.length + targets.length || !matchesTargets(added, targets) ||
+          if (!this.host.active() || this.host.active().id !== doc.id ||
+              after.length !== others.length + targets.length || !matchesTargets(added, targets) ||
               others.some(g => !after.some(a => a.id === g.id && samePosition(a, g)))) {
             throw new Error("辅助线数量、位置或用户辅助线核验失败。");
           }
@@ -270,11 +281,7 @@ class GuideService {
         if (includeBleed) for (const index of bleedIndices) bleedIds.add(createdByIdx[index]);
         this.bleedLedger.set(doc.id, bleedIds);
         if (mode === "clear") return { message: "已清除当前文档的全部辅助线。" };
-        // 彩色参考线不被当前 Photoshop 支持时，host 已退回默认色，这里补一句说明。
-        const colorNote = this.host.coloredGuidesSupported === false
-          ? "（注意：当前 Photoshop 不支持彩色参考线，已按默认颜色生成。）"
-          : "";
-        return await this.showResult(doc, buildMessage(mode, includeMargin, includeLOGO, includeEndorsement, includeBleed, logoIndices) + colorNote);
+        return await this.showResult(doc, buildMessage(mode, includeMargin, includeLOGO, includeEndorsement, includeBleed, logoIndices));
       }, name);
     } finally {
       this.busy = false;
@@ -283,11 +290,11 @@ class GuideService {
 }
 
 function buildMessage(mode, includeMargin, includeLOGO, includeEndorsement, includeBleed, logoIndices) {
-  if (mode === "bleed") return "已更新出血辅助线（自画布边缘向内缩）。";
+  if (mode === "bleed") return "已更新洋红出血辅助线（自画布边缘向内缩）。";
   const parts = [];
   if (includeLOGO) parts.push("LOGO 高度线" + (logoIndices.length > 1 ? "（含顶部/左侧安全线）" : ""));
   if (includeEndorsement) parts.push("背书参考线（0.3H，另需核对正文大小）");
-  if (includeBleed) parts.push("出血线");
+  if (includeBleed) parts.push("洋红出血线");
   if (includeMargin) return parts.length ? "已更新版心与 " + parts.join("、") + "。" : "已更新四条版心辅助线。";
   return parts.length ? "已更新 " + parts.join("、") + "。" : "没有需要更新的辅助线。";
 }

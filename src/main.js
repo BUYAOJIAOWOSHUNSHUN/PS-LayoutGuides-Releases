@@ -2,6 +2,7 @@
 
 const ps = require("photoshop");
 const { entrypoints, shell } = require("uxp");
+const { pickColor, rgbToHex } = require("./color-picker.js");
 const { createPhotoshopHost } = require("./photoshop-host.js");
 const { GuideService, errorText } = require("./guide-service.js");
 const { BRANDS, findBrand } = require("./brands.js");
@@ -27,6 +28,7 @@ let visibilityReading = false;
 let timer = null;
 let initialized = false;
 let lastSignature = null;
+let lastCanvasSnapshot = null;
 let lastResolution = null;
 let lastDocWidth = null;    // 文档当前像素尺寸缓存，给「还原」按钮用
 let lastDocHeight = null;
@@ -90,6 +92,8 @@ function setDisabled(id, disabled) {
 
 function disableAll(disabled) {
   for (const id of ALL_BUTTONS) setDisabled(id, disabled);
+  setDisabled("canvasWidth", disabled);
+  setDisabled("canvasHeight", disabled);
 }
 
 function status(message, error) {
@@ -322,6 +326,7 @@ function refresh(explicit) {
     disableAll(!snapshot);
     setDisabled("clear", !snapshot || !(snapshot.ownedCount + snapshot.otherCount));
     if (!snapshot) {
+      lastCanvasSnapshot = null;
       lastResolution = null;
       lastDocWidth = null;
       lastDocHeight = null;
@@ -341,6 +346,9 @@ function refresh(explicit) {
       return;
     }
     const l = snapshot.layout;
+    const canvasSnapshot = { id: snapshot.id, width: l.width, height: l.height, resolution: snapshot.resolution };
+    const canvasChanged = !sameCanvasDocument(canvasSnapshot, lastCanvasSnapshot);
+    lastCanvasSnapshot = canvasSnapshot;
     lastResolution = snapshot.resolution;
     lastDocWidth = l.width;
     lastDocHeight = l.height;
@@ -351,10 +359,12 @@ function refresh(explicit) {
     // 文档变了（切换 / 撤销 / 确认修改成功）就以文档为准，清掉编辑标记；
     // 文档没变时，聚焦中或编辑过的框不能回写，否则用户输入会被冲掉。
     if (changed) {
-      for (let i = 0; i < SIZE_FIELDS.length; i++) sizeDirty[SIZE_FIELDS[i]] = false;
+      for (const field of ["imageWidth", "imageHeight", "imageResolution"]) sizeDirty[field] = false;
       sizeLastEdited = null;   // 文档已变（撤销/修改成功），联动方向也作废
     }
-    const keepUserInput = field => !changed && (sizeDirty[field] || sizeFocus === field);
+    if (canvasChanged) { sizeDirty.canvasWidth = false; sizeDirty.canvasHeight = false; }
+    const keepUserInput = field => !(field.indexOf("canvas") === 0 ? canvasChanged : changed)
+      && (sizeDirty[field] || sizeFocus === field);
     // 图片大小：宽/高按当前单位换算显示，分辨率固定 PPI。
     if (!keepUserInput("imageWidth")) writeSizeValue("imageWidth", formatUnitValue(l.width, imageUnit, snapshot.resolution));
     if (!keepUserInput("imageHeight")) writeSizeValue("imageHeight", formatUnitValue(l.height, imageUnit, snapshot.resolution));
@@ -377,13 +387,7 @@ function refresh(explicit) {
 
 /* ---------- 图片大小 / 画布大小 编辑器 ---------- */
 
-// 跟出血一样的「自绘数值框」套路：span + keydown + 自己接数字键盘事件。
-// UXP 里除 sp-textfield 外没有可用的文本输入控件，所以这五个框（imageWidth / imageHeight /
-// imageResolution / canvasWidth / canvasHeight）都是自绘的。
-//
-// 与出血的关键差异：**输入框不直接改状态**。这里只是让用户输入目标值，
-// 点「确认修改」才真正调用 resizeImage / resizeCanvas。所以失焦/回车时不做合法性校验，
-// 「确认修改」按钮统一收一遍。
+// 尺寸使用原生 sp-textfield；失焦或回车仅结束输入，点「确认修改」才修改文档。
 const SIZE_FIELDS = ["imageWidth", "imageHeight", "imageResolution", "canvasWidth", "canvasHeight"];
 
 /* 长度单位（模仿 PS 新建 / 画布大小对话框）：全部以英寸为桥互相换算。
@@ -396,10 +400,9 @@ let canvasUnit = "cm";  // 画布大小卡的单位
 // 选项顺序与 PS 对话框一致：前景 / 背景 / 白色 / 黑色 / 中灰 / 其它。
 // 「灰色」改成「中灰」（v1.9.23，老大反馈）：固定值是 128,128,128 的中间灰，
 // 叫「中灰」更直观，避免和「随便一种灰」混淆。
-// 「其它」走 PS 自带拾色器（v1.9.11）：点色块或选「其它」都会弹窗，
-// 选中的颜色记进 canvasCustomColor，选项自动停在「其它」上。
+// 点色块或选「其它」打开独立 UXP 拾色弹窗；确认后才保存自定颜色。
 // 前景/背景在点「确认修改」时现场读文档的 FG/BG（随用随取，不缓存）；
-// 读不到时退回白色并在状态栏说明。扩展颜色只影响**新增**的画布区域
+// 提交时读不到所选颜色则中止并说明原因。扩展颜色只影响新增的画布区域
 // （且只对有背景层的文档生效，这是 PS 本身的行为），缩小画布时用不到它。
 const EXT_OPTIONS = ["foreground", "background", "white", "black", "gray", "other"];
 const EXT_COLOR_NAMES = { foreground: "前景", background: "背景", white: "白色", black: "黑色", gray: "中灰", other: "其它" };
@@ -429,222 +432,26 @@ function renderExtSwatch() {
   swatch.style.backgroundColor = rgb ? "rgb(" + rgb.r + "," + rgb.g + "," + rgb.b + ")" : "#6f6f6f";
 }
 
-// 面板内迷你取色器（v1.9.13）：PS 原生拾色器在 UXP 里调不出来
-//（v1.9.11 借道「设置前景色」被拒、v1.9.12 四种组合探测全灭），改成面板内置：
-// 点色块弹出「预设色板（16 色）+ 十六进制输入」小面板，选完即应用。
-const EXT_PRESETS = [
-  "FFFFFF", "000000", "F2F2F2", "D9D9D9", "A6A6A6", "595959", "404040", "808080",
-  "FF0000", "FF8000", "FFE000", "00B050", "00B0F0", "0070C0", "7030A0", "FF00FF"
-];
-let extPopup = null;
-let extHue = 0;              // 取色器当前色相（0-359）
-let extSV = { s: 1, v: 1 };  // 取色器当前饱和度 / 明度
-let extSvSquare = null;      // SV 方块元素（切色相时要更新渐变底色）
-let extHexField = null;      // 十六进制输入框（SV/色相选色后要同步回它，v1.9.18）
+let colorDialogOpen = false;
 
-function hexToRgb(hex) {
-  const m = /^#?([0-9a-fA-F]{6})$/.exec(String(hex || "").trim());
-  if (!m) return null;
-  const v = parseInt(m[1], 16);
-  return { r: (v >> 16) & 255, g: (v >> 8) & 255, b: v & 255 };
-}
-
-function rgbToHex(rgb) {
-  return ((1 << 24) + (rgb.r << 16) + (rgb.g << 8) + rgb.b).toString(16).slice(1).toUpperCase();
-}
-
-// HSV → RGB（h 0-359，s/v 0-1）。维基百科标准公式：f(n) = v − v·s·max(0, min(k, 4−k, 1))。
-function hsvToRgb(h, s, v) {
-  const f = n => {
-    const k = (n + h / 60) % 6;
-    return v - v * s * Math.max(0, Math.min(k, 4 - k, 1));
-  };
-  return { r: Math.round(f(5) * 255), g: Math.round(f(3) * 255), b: Math.round(f(1) * 255) };
-}
-
-function rgbToHsv(rgb) {
-  const r = rgb.r / 255, g = rgb.g / 255, b = rgb.b / 255;
-  const max = Math.max(r, g, b);
-  const min = Math.min(r, g, b);
-  const d = max - min;
-  let h = 0;
-  if (d > 0) {
-    if (max === r) h = ((g - b) / d) % 6;
-    else if (max === g) h = (b - r) / d + 2;
-    else h = (r - g) / d + 4;
-    h = Math.round(h * 60);
-    if (h < 0) h += 360;
-  }
-  return { h: h, s: max === 0 ? 0 : d / max, v: max };
-}
-
-function closeExtPopup() {
-  if (extPopup && extPopup.parentNode) extPopup.parentNode.removeChild(extPopup);
-  extPopup = null;
-  extSvSquare = null;
-  extHexField = null;
-}
-
-function applyCustomExtColor(rgb, keepOpen) {
-  canvasExtension = "other";
-  canvasCustomColor = rgb;
-  extPickerApi.set("other");
-  renderExtSwatch();
-  // 十六进制框实时跟随当前颜色（v1.9.18 修「点应用又变回白色」）：之前框里留的是
-  // 打开面板时的旧值——比如先点过某个色板，之后 SV 区选的新颜色没同步进去，
-  // 点「应用」就被旧值打回去了（老大诊断成「下面的色板干扰了上面的点选」）。
-  if (extHexField) extHexField.value = "#" + rgbToHex(rgb);
-  if (!keepOpen) closeExtPopup();
-  status("画布扩展颜色：自定 #" + rgbToHex(rgb) + "。");
-}
-
-function toggleExtPopup() {
-  if (extPopup) { closeExtPopup(); return; }
-  const wrap = el("canvasExtSwatchWrap");
-  extPopup = document.createElement("div");
-  extPopup.className = "ext-popup";
-  extPopup.addEventListener("click", event => event.stopPropagation());
-  // 起点色相 / 饱和明度取自当前颜色，让选色面板开在当前颜色附近。
-  const startHsv = rgbToHsv(effectiveExtColor());
-  extHue = startHsv.h;
-  extSV = { s: startHsv.s, v: startHsv.v };
-  // ---- SV 选色区 + 色相条（模仿 PS 拾色器的选色布局，点一下即选；带位置标识）----
-  // v1.9.20 重要改动：SV 渐变**不走 JS 动态写的 background**——真机上它是间歇性
-  // 失效的（有时画得出有时整块变黑，两次截图一次正常一次全黑）。改成稳态实现：
-  // 底层铺**纯色**（hsl 随色相变，inline backgroundColor 与色块同款机制必渲染），
-  // 上面叠两层**写死在样式表里的渐变**（白→透明、黑→透明；色相条已证明样式表
-  // 渐变必渲染），三层叠出 PS 式选色面。
-  const pickRow = document.createElement("div");
-  pickRow.className = "ext-popup-row";
-  const square = document.createElement("div");
-  square.className = "ext-popup-sv";
-  const squareWhite = document.createElement("div");
-  squareWhite.className = "ext-popup-sv-white";
-  square.appendChild(squareWhite);
-  const squareBlack = document.createElement("div");
-  squareBlack.className = "ext-popup-sv-black";
-  square.appendChild(squareBlack);
-  // 位置标识：白边小方环，标出当前选中的饱和度 / 明度点（PS 同款形式）。
-  const svMarker = document.createElement("div");
-  svMarker.className = "ext-popup-sv-marker";
-  square.appendChild(svMarker);
-  extSvSquare = square;
-  const placeSvMarker = () => {
-    const rect = square.getBoundingClientRect();
-    if (!rect.width) return;
-    svMarker.style.left = Math.max(0, Math.min(rect.width - 12, extSV.s * (rect.width - 12))) + "px";
-    svMarker.style.top = Math.max(0, Math.min(rect.height - 12, (1 - extSV.v) * (rect.height - 12))) + "px";
-  };
-  const updateSv = () => {
-    // 只写纯色背景（inline background-color），渐变交给样式表的两层遮罩。
-    square.style.backgroundColor = "hsl(" + extHue + ", 100%, 50%)";
-    placeSvMarker();
-  };
-  const pickSv = event => {
-    const rect = square.getBoundingClientRect();
-    const x = Number.isFinite(event.clientX) ? event.clientX - rect.left : event.offsetX;
-    const y = Number.isFinite(event.clientY) ? event.clientY - rect.top : event.offsetY;
-    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
-    extSV = {
-      s: Math.max(0, Math.min(1, x / Math.max(1, rect.width))),
-      v: 1 - Math.max(0, Math.min(1, y / Math.max(1, rect.height)))
-    };
-    placeSvMarker();
-    applyCustomExtColor(hsvToRgb(extHue, extSV.s, extSV.v), true);
-  };
-  square.addEventListener("click", event => { event.stopPropagation(); pickSv(event); });
-  pickRow.appendChild(square);
-  const hueBar = document.createElement("div");
-  hueBar.className = "ext-popup-hue";
-  // 色相位置标识：白色横杠，标出当前色相（PS 色相滑条的指针形式）。
-  const hueMarker = document.createElement("div");
-  hueMarker.className = "ext-popup-hue-marker";
-  hueBar.appendChild(hueMarker);
-  const placeHueMarker = () => {
-    const rect = hueBar.getBoundingClientRect();
-    if (!rect.width) return;
-    hueMarker.style.top = Math.max(0, Math.min(rect.height - 4, extHue / 360 * (rect.height - 4))) + "px";
-  };
-  const pickHue = event => {
-    const rect = hueBar.getBoundingClientRect();
-    const y = Number.isFinite(event.clientY) ? event.clientY - rect.top : event.offsetY;
-    if (!Number.isFinite(y)) return;
-    extHue = Math.max(0, Math.min(359, Math.round(y / Math.max(1, rect.height) * 360)));
-    placeHueMarker();
-    updateSv();
-    applyCustomExtColor(hsvToRgb(extHue, extSV.s, extSV.v), true);
-  };
-  hueBar.addEventListener("click", event => { event.stopPropagation(); pickHue(event); });
-  pickRow.appendChild(hueBar);
-  extPopup.appendChild(pickRow);
-  // 预设色板：两行各 8 格，点一下立即应用。
-  for (let row = 0; row < 2; row++) {
-    const rowEl = document.createElement("div");
-    rowEl.className = "ext-popup-row";
-    for (let i = row * 8; i < row * 8 + 8 && i < EXT_PRESETS.length; i++) {
-      const hex = EXT_PRESETS[i];
-      const cell = document.createElement("span");
-      cell.className = "ext-popup-swatch";
-      cell.style.backgroundColor = "#" + hex;
-      cell.setAttribute("role", "button");
-      cell.setAttribute("tabindex", "0");
-      cell.title = "#" + hex;
-      cell.addEventListener("click", function (event) {
-        event.stopPropagation();
-        applyCustomExtColor(hexToRgb(hex));
-      });
-      rowEl.appendChild(cell);
+async function openCanvasColorPicker() {
+  if (service.busy || colorDialogOpen) return;
+  colorDialogOpen = true;
+  try {
+    const selected = await pickColor(document, effectiveExtColor());
+    if (selected) {
+      canvasCustomColor = { r: selected.r, g: selected.g, b: selected.b };
+      canvasExtension = "other";
+      renderExtSwatch();
+      status("画布扩展颜色：#" + rgbToHex(selected).replace(/^#/, "") + "。");
     }
-    extPopup.appendChild(rowEl);
+  } catch (error) {
+    console.error(error);
+    status("拾色器打开失败：" + errorText(error), true);
+  } finally {
+    colorDialogOpen = false;
+    if (extPickerApi) extPickerApi.set(canvasExtension);
   }
-  // 十六进制输入行：sp-textfield（真输入控件）+ 应用按钮，回车同样生效。
-  const hexRow = document.createElement("div");
-  hexRow.className = "ext-popup-row";
-  const field = document.createElement("sp-textfield");
-  field.className = "ext-popup-input";
-  field.setAttribute("aria-label", "十六进制颜色");
-  const apply = document.createElement("sp-button");
-  apply.setAttribute("variant", "cta");
-  apply.className = "ext-popup-apply";
-  const label = document.createElement("span");
-  label.className = "button-label";
-  label.textContent = "应用";
-  apply.appendChild(label);
-  const applyHex = function () {
-    const rgb = hexToRgb(field.value);
-    if (!rgb) { status("十六进制颜色格式不对，应为 #RRGGBB。", true); return; }
-    applyCustomExtColor(rgb);
-  };
-  apply.addEventListener("click", function (event) { event.stopPropagation(); applyHex(); });
-  field.addEventListener("keydown", function (event) {
-    if (event.key === "Enter") { event.preventDefault(); applyHex(); }
-    event.stopPropagation();
-  });
-  field.addEventListener("click", function (event) { event.stopPropagation(); });
-  // 十六进制框也套浅灰衬底（v1.9.18，老大反馈小面板里的框还是黑底），
-  // 与主面板数值框同一套 .field-wrap 方案，宽度 96px。
-  const hexWrap = document.createElement("span");
-  hexWrap.className = "field-wrap field-wrap-hex";
-  hexWrap.appendChild(field);
-  field.style.opacity = "0.45";
-  hexRow.appendChild(hexWrap);
-  // 「应用」按钮包进收缩容器、贴到行尾右下角（v1.9.23，老大反馈按钮和输入框
-  // 叠在一起）：sp-button 内置 auto 外边距在真机压不掉（margin:0 无效，页脚
-  // 「检查更新」同款坑），用 flex:1 的容器中和它，按钮天然钉在行的最右端，
-  // 与输入框隔开 8px，不再重叠。
-  const applyWrap = document.createElement("span");
-  applyWrap.className = "ext-popup-apply-wrap";
-  applyWrap.appendChild(apply);
-  hexRow.appendChild(applyWrap);
-  extPopup.appendChild(hexRow);
-  wrap.appendChild(extPopup);
-  // append 之前量不到尺寸，位置标识要等挂上后再摆放。
-  placeSvMarker();
-  placeHueMarker();
-  // 起始十六进制值在 append 之后再赋（预览的替身组件 append 时才升级，提前赋会被吞）。
-  extHexField = field;
-  const start = effectiveExtColor();
-  field.value = start ? "#" + rgbToHex(start) : "#FFFFFF";
 }
 
 function unitToPixels(value, unit, ppi) {
@@ -719,6 +526,7 @@ function buildOptionPicker(pickerId, options, labelOf, onChange, dividerBefore) 
         item.textContent = (option === current ? "✓ " : "") + labelOf(option);
         item.addEventListener("click", function (event) {
           event.stopPropagation();
+          if (service.busy || colorDialogOpen) { close(); return; }
           picker.setAttribute("data-value", option);
           render();
           close();
@@ -731,6 +539,7 @@ function buildOptionPicker(pickerId, options, labelOf, onChange, dividerBefore) 
   }
   function toggle(event) {
     event.stopPropagation();
+    if (service.busy || colorDialogOpen) { close(); return; }
     if (menu) close();
     else open();
   }
@@ -868,6 +677,7 @@ function renderAnchor() {
 }
 
 function selectAnchor(id) {
+  if (service.busy || colorDialogOpen) return;
   canvasAnchor = id;
   renderAnchor();
   status("画布锚点已选：" + ANCHOR_LABEL[id] + "。");
@@ -930,6 +740,7 @@ async function applyImageSize() {
       writeSizeValue("imageHeight", formatUnitValue(heightPx, imageUnit, resolution));
     }
   }
+  service.busy = true;
   disableAll(true);
   status("正在修改图片大小…");
   let failed = false;
@@ -942,18 +753,31 @@ async function applyImageSize() {
     message = "图片大小修改失败：" + errorText(error);
     failed = true;
   } finally {
+    service.busy = false;
     refresh(false);
     status(message, failed);
   }
 }
 
+function canvasDocumentState(doc) {
+  return doc ? { id: doc.id, width: Number(doc.width), height: Number(doc.height), resolution: Number(doc.resolution) } : null;
+}
+
+function sameCanvasDocument(a, b) {
+  return !!a && !!b && a.id === b.id && a.width === b.width && a.height === b.height && a.resolution === b.resolution;
+}
+
 async function applyCanvasSize() {
-  if (service.busy) return;
+  if (service.busy || colorDialogOpen) return;
   const doc = host.active();
-  if (!doc) { status("当前没有打开的文档。", true); return; }
-  // 画布宽高按当前单位输入，换算成像素再交给 resizeCanvas。
-  // 文档的 PPI 来自上次 refresh() 写入的 lastResolution。
-  if (!Number.isFinite(lastResolution) || lastResolution <= 0) {
+  if (!doc) { refresh(false); status("当前没有打开的文档。", true); return; }
+  const source = canvasDocumentState(doc);
+  if (!sameCanvasDocument(source, lastCanvasSnapshot)) {
+    refresh(false);
+    status("文档或尺寸已变化，已刷新画布数值，请重新输入后确认。", true);
+    return;
+  }
+  if (!Number.isFinite(source.resolution) || source.resolution <= 0) {
     status("无法读取文档分辨率，画布大小修改中止。", true);
     return;
   }
@@ -963,72 +787,69 @@ async function applyCanvasSize() {
     status("画布大小的宽、高都必须是大于 0 的数字。", true);
     return;
   }
-  const widthPx = Math.round(unitToPixels(widthValue, canvasUnit, lastResolution));
-  const heightPx = Math.round(unitToPixels(heightValue, canvasUnit, lastResolution));
-  // 扩展颜色：固定色直接用；前景/背景现场读文档 FG/BG，其它用拾色器选的自定色，
-  // 都拿不到退白色并说明。
-  let extensionColor = EXT_COLOR_FIXED[canvasExtension] || (canvasExtension === "other" ? canvasCustomColor : null);
-  let extensionNote = "";
-  if (!extensionColor && canvasExtension === "foreground") {
-    extensionColor = host.getForegroundRGB();
-    if (!extensionColor) { extensionColor = EXT_COLOR_FIXED.white; extensionNote = "（前景色读取失败，已按白色扩展）"; }
-  } else if (!extensionColor && canvasExtension === "background") {
-    extensionColor = host.getBackgroundRGB();
-    if (!extensionColor) { extensionColor = EXT_COLOR_FIXED.white; extensionNote = "（背景色读取失败，已按白色扩展）"; }
-  } else if (!extensionColor && canvasExtension === "other") {
-    extensionColor = EXT_COLOR_FIXED.white;
-    extensionNote = "（自定颜色读取失败，已按白色扩展）";
+  const unit = canvasUnit, anchor = canvasAnchor, extension = canvasExtension;
+  // 物理单位只显示两位小数；未改变的显示值沿用原像素，避免另一边被舍入误改。
+  const targetPixels = (value, original) => value === Number(formatUnitValue(original, unit, source.resolution))
+    ? original : Math.round(unitToPixels(value, unit, source.resolution));
+  const widthPx = targetPixels(widthValue, source.width);
+  const heightPx = targetPixels(heightValue, source.height);
+  if (!Number.isFinite(widthPx) || !Number.isFinite(heightPx) || widthPx < 1 || heightPx < 1) {
+    status("换算后的画布宽、高至少需要 1 像素。", true);
+    return;
   }
+  if (widthPx === source.width && heightPx === source.height) {
+    restoreCanvasSize();
+    status("画布尺寸未改变。");
+    return;
+  }
+  let extensionColor = EXT_COLOR_FIXED[extension] || null;
+  if (extension === "foreground") extensionColor = host.getForegroundRGB();
+  if (extension === "background") extensionColor = host.getBackgroundRGB();
+  if (extension === "other") extensionColor = canvasCustomColor;
+  if (!extensionColor) {
+    status("无法读取所选扩展颜色，请重新选择颜色后确认。", true);
+    return;
+  }
+  extensionColor = { r: extensionColor.r, g: extensionColor.g, b: extensionColor.b };
+  service.busy = true;
   disableAll(true);
   status("正在修改画布大小…");
   let failed = false;
   let message;
   try {
-    // resizeCanvas 返回 false = 画布改了但扩展颜色没能应用（见 photoshop-host 的回退）。
     let colorApplied = true;
-    await host.modal(async () => {
-      colorApplied = await host.resizeCanvas(doc, widthPx, heightPx,
-        ANCHOR_POSITION[canvasAnchor] || "MIDDLECENTER", extensionColor);
-    }, "修改画布大小");
-    // 事后核验：AM 路径万一静默没生效（不抛错也不改尺寸），把实际尺寸亮给用户，
-    // 不再只报「已修改」。
-    let sizeNote = "";
-    try {
-      if (Number.isFinite(doc.width) && Number.isFinite(doc.height)
-          && (Math.abs(doc.width - widthPx) > 1 || Math.abs(doc.height - heightPx) > 1)) {
-        sizeNote = "（注意：文档实际 " + Math.round(doc.width) + " × " + Math.round(doc.height)
-          + " px，与请求不符，请截图反馈）";
+    await host.modal(async context => {
+      if (!sameCanvasDocument(canvasDocumentState(host.active()), source)) {
+        throw new Error("文档或尺寸已变化，本次未执行修改，请重新输入后确认。");
       }
-    } catch (_) {}
-    message = "画布大小已修改为 " + widthValue + " × " + heightValue + " " + UNIT_NAMES[canvasUnit]
-      + "（锚点：" + ANCHOR_LABEL[canvasAnchor]
-      + "，扩展颜色：" + EXT_COLOR_NAMES[canvasExtension] + "）。" + sizeNote + extensionNote;
-    if (!colorApplied) message += "（注意：扩展颜色未能应用，新增区域可能为透明。）";
+      colorApplied = await host.resizeCanvas(doc, widthPx, heightPx,
+        ANCHOR_POSITION[anchor] || "MIDDLECENTER", extensionColor, context);
+    }, "修改画布大小");
+    sizeDirty.canvasWidth = false;
+    sizeDirty.canvasHeight = false;
+    if (sizeFocus === "canvasWidth" || sizeFocus === "canvasHeight") sizeFocus = null;
+    message = "画布大小已修改为 " + widthPx + " × " + heightPx + " 像素（锚点：" + ANCHOR_LABEL[anchor]
+      + "，扩展颜色：" + EXT_COLOR_NAMES[extension] + "）。";
+    if (!colorApplied) message += "当前文档无背景层，新增区域保持透明。";
   } catch (error) {
     console.error(error);
     message = "画布大小修改失败：" + errorText(error);
     failed = true;
   } finally {
+    service.busy = false;
     refresh(false);
     status(message, failed);
   }
 }
 
-// 画布卡的「还原」：填了数字还没点「确认修改」又想反悔时，把宽/高两个框
-// 恢复成文档当前实际值（按当前单位换算），并清掉编辑标记。只重写显示，不碰文档。
+// 只放弃未提交输入，重新读取当前文档，不修改 Photoshop 文档。
 function restoreCanvasSize() {
   if (service.busy) return;
-  if (!Number.isFinite(lastDocWidth) || !Number.isFinite(lastDocHeight) || !Number.isFinite(lastResolution)) {
-    status("当前没有文档数值可以还原。", true);
-    return;
-  }
-  writeSizeValue("canvasWidth", formatUnitValue(lastDocWidth, canvasUnit, lastResolution));
-  writeSizeValue("canvasHeight", formatUnitValue(lastDocHeight, canvasUnit, lastResolution));
-  for (const field of ["canvasWidth", "canvasHeight"]) {
-    sizeDirty[field] = false;
-  }
+  sizeDirty.canvasWidth = false;
+  sizeDirty.canvasHeight = false;
   if (sizeFocus === "canvasWidth" || sizeFocus === "canvasHeight") sizeFocus = null;
-  status("画布数值已还原为文档当前值。");
+  refresh(false);
+  status(lastCanvasSnapshot ? "画布数值已还原为文档当前值。" : "当前没有文档数值可以还原。", !lastCanvasSnapshot);
 }
 
 // 「还原」：填了数字还没点「确认修改」又想反悔时，把图片卡三个框恢复成文档当前实际值。
@@ -1064,18 +885,20 @@ async function changeDocMode(mode) {
   let current = "";
   try { current = host.getMode(doc); } catch (error) { console.error("读取颜色模式失败:", error); }
   if (current === mode) { status("当前文档已经是 " + mode + " 模式。"); return; }
+  service.busy = true;
   disableAll(true);
   status("正在转换为 " + mode + " 模式…");
   let failed = false;
   let message;
   try {
-    await host.modal(() => host.changeMode(doc, mode), "转换颜色模式");
-    message = "已转换为 " + mode + " 模式。";
+    await host.modal(context => host.changeMode(doc, mode, context), "转换颜色模式");
+    message = "已转换为 " + mode + " 模式，图层结构已核验保留。";
   } catch (error) {
     console.error(error);
     message = "颜色模式转换失败：" + errorText(error);
     failed = true;
   } finally {
+    service.busy = false;
     refresh(false);
     status(message, failed);
   }
@@ -1377,7 +1200,7 @@ function start() {
       valueEl.addEventListener("focus", () => { sizeFocus = field; });
       valueEl.addEventListener("blur", () => { if (sizeFocus === field) sizeFocus = null; });
       // 输入框不直接改状态：失焦/回车只把焦点移走，真正的修改走「确认修改」按钮。
-      valueEl.setAttribute("title", "直接输入数字，双击可全选，回车或点「确认修改」生效");
+      valueEl.setAttribute("title", "直接输入数字，双击可全选，点「确认修改」生效");
     }
     // 自绘单位下拉：一张卡一个，控制宽/高两行。选中后以文档为准重写换算值。
     buildUnitPicker("imageUnitPicker", function (unit) {
@@ -1390,31 +1213,20 @@ function start() {
     buildUnitPicker("canvasUnitPicker", function (unit) {
       canvasUnit = unit;
       el("canvasUnitText").textContent = UNIT_NAMES[canvasUnit] || "厘米";
-      lastSignature = null;
+      lastCanvasSnapshot = null;
       refresh(false);
       status("画布大小单位：" + (UNIT_NAMES[canvasUnit] || "厘米") + "。");
     });
-    // 画布扩展颜色下拉（自绘，同单位下拉同一套代码）+ 色块跟随。
-    // 选「其它」：已有自定色就直接切过去；没有则弹出面板内取色器（v1.9.13 起
-    // 不再依赖 PS 原生拾色器 —— 它在 UXP 里调不出来）。「其它」上边加分割线。
-    // 分割线（v1.9.17）：「背景」下方和「其它」上方各一条 —— 与 PS 原生菜单一样，
-    // 把随文档变的（前景/背景）、固定色（白/黑/灰）、自定入口三段隔开。
+    // 「其它」和色块都打开独立弹窗；取消时恢复原选项。
     extPickerApi = buildOptionPicker("canvasExtPicker", EXT_OPTIONS, option => EXT_COLOR_NAMES[option] || option, function (option) {
-      if (option === "other" && !canvasCustomColor) {
-        toggleExtPopup();
-        return;
-      }
+      if (option === "other") { void openCanvasColorPicker(); return; }
       canvasExtension = option;
       renderExtSwatch();
       status("画布扩展颜色：" + (EXT_COLOR_NAMES[option] || option) + "。");
     }, ["white", "other"]);
     renderExtSwatch();
-    // 色块可点：弹出面板内取色器（stopPropagation 防止 document 级收起把它关掉）。
-    el("canvasExtSwatch").addEventListener("click", function (event) {
-      event.stopPropagation();
-      toggleExtPopup();
-    });
-    el("canvasExtSwatch").title = "点这里选画布扩展颜色（预设色板 / 十六进制）";
+    bindAction(el("canvasExtSwatch"), () => { void openCanvasColorPicker(); });
+    el("canvasExtSwatch").title = "选择画布扩展颜色";
     // 数值框底色调浅（v1.9.17，老大反馈太黑）：sp-textfield 内部底色是组件写死的
     //（主题、CSS 变量都动不了它），改用「浅灰衬底 + 半透明控件」——见 styles.css
     // 的 .field-wrap。9 个数值框（尺寸 5 + 出血 4）统一包一层，几何保持不变。

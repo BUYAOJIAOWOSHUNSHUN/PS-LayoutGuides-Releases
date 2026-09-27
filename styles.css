@@ -33,10 +33,10 @@ html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
 .brand-button.unavailable { background: #2a2a2a; border-color: #3a3a3a; }
 .brand-mark { display: block; flex-shrink: 0; margin-right: 5px; }
 .brand-button.unavailable .brand-mark { opacity: 0.48; }
-.brand-name { color: #e8e8e8; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.brand-name { color: #e8e8e8; font-size: 12px; font-weight: 600; line-height: 16px; white-space: nowrap; }
 .brand-button.unavailable .brand-name { color: #808080; }
 .tabs { display: flex; flex-direction: row; }
-.tab { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center; padding: 7px 0 8px; color: #a2a2a2; font-weight: 600; font-size: 13px; border-bottom: 2px solid transparent; }
+.tab { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center; padding: 7px 0 8px; color: #a2a2a2; font-weight: 600; font-size: 13px; line-height: 18px; border-bottom: 2px solid transparent; }
 .tab.active { color: #f0f0f0; border-bottom-color: #1473e6; }
 .tab-tag { font-size: 10px; margin-left: 5px; color: #8c8c8c; }
 .tab.active .tab-tag { color: #6fa8ea; }
@@ -57,17 +57,17 @@ html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
 /* 标题行右侧控制区：锁定芯片 + mm/cm 单位切换，等高并排。 */
 .heading-controls { display: flex; flex-direction: row; align-items: center; }
 .heading-controls .unit-switch { margin-left: 6px; }
-.section-title { font-size: 13px; font-weight: 600; color: #e0e0e0; }
-.parameter-card { display: block; padding: 0 12px; background: #323232; border: 1px solid #454545; border-radius: 6px; box-sizing: border-box; }
+.section-title { font-size: 13px; font-weight: 600; line-height: 18px; color: #e0e0e0; }
+.parameter-card { display: block; padding: 0 10px; background: #323232; border: 1px solid #454545; border-radius: 6px; box-sizing: border-box; }
 
 /* 出血：左侧小锁，2×2 数值，每个数值后面跟着一对上下箭头。 */
 .unit-switch { display: flex; flex-direction: row; border: 1px solid #545454; border-radius: 4px; overflow: hidden; }
-.unit-option { padding: 3px 9px; font-size: 11px; color: #a2a2a2; }
+.unit-option { padding: 3px 9px; font-size: 11px; line-height: 14px; color: #a2a2a2; }
 .unit-option.active { background: #1473e6; color: #ffffff; }
-.bleed-card { padding: 10px 12px; }
+.bleed-card { padding: 10px; }
 /* 锁定按钮做成和 mm/cm 单位按钮同款的小芯片，放在它们前面（老大要求）。
    默认锁定（main.js 里 bleedLocked = true）；锁定态用蓝色系（黄色太扎眼）。 */
-.lock-button { height: 18px; padding: 0 7px; flex-shrink: 0; display: flex; align-items: center; background: #3a3a3a; border: 1px solid #545454; border-radius: 4px; box-sizing: border-box; cursor: pointer; }
+.lock-button { height: 22px; padding: 0 7px; flex-shrink: 0; display: flex; align-items: center; background: #3a3a3a; border: 1px solid #545454; border-radius: 4px; box-sizing: border-box; cursor: pointer; }
 .lock-button.locked { background: #1f4f86; border-color: #1473e6; }
 /* 锁图标：锁定 = 闭合锁，解锁 = 开口锁。两个状态各一张 PNG，只切 src。 */
 .icon-lock { display: block; width: 13px; height: 13px; flex-shrink: 0; }
@@ -79,7 +79,7 @@ html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
 .bleed-cross-mid { justify-content: space-between; align-items: center; }
 .bleed-cell { min-width: 0; display: flex; align-items: center; padding: 3px 0; box-sizing: border-box; }
 .bleed-cross-mid .bleed-cell + .bleed-cell { margin-left: 12px; }
-.bleed-label { width: 17px; color: #c8c8c8; font-size: 12px; flex-shrink: 0; }
+.bleed-label { display: block; width: 17px; height: 32px; line-height: 32px; text-align: center; color: #c8c8c8; font-size: 12px; flex-shrink: 0; }
 
 /* 数值框是**自绘**的：一个 span + 键盘事件，不是 sp-textfield。
    UXP 的 sp-textfield 内部底色写死（真机实测 #1e1e1e），
@@ -89,13 +89,13 @@ html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
 /* 出血数值框用真输入控件 sp-textfield（v1.9.6 起）：
    之前自绘 span 的按键会透传给 PS 本体（打数字 → 图层面板不透明度跟着变），
    真输入框获得焦点后宿主不再接收按键。容器只负责排版，不再画边框底色。 */
-.bleed-input { display: flex; align-items: center; height: 24px; flex-shrink: 0; }
-sp-textfield.bleed-field { width: 44px; flex: 0 0 auto; margin: 0; }
-.bleed-unit { font-size: 10px; color: #b8b8b8; flex-shrink: 0; padding: 0 6px 0 4px; }
+.bleed-input { display: flex; align-items: center; height: 32px; flex-shrink: 0; }
+sp-textfield.bleed-field { width: 44px; height: 32px; min-height: 32px; flex: 0 0 auto; margin: 0; box-sizing: border-box; }
+.bleed-unit { font-size: 10px; line-height: 32px; color: #b8b8b8; flex-shrink: 0; padding: 0 6px 0 4px; }
 /* 步进箭头在数值**后面**。图标走 PNG —— CSS 的 border 三角在 UXP 里画不出斜接，
    真机上只剩一条横杠，就是之前「图标显示不全」的原因。 */
-.stepper { display: flex; flex-direction: column; width: 22px; height: 28px; flex-shrink: 0; border-left: 1px solid #5a5a5a; }
-.step-up, .step-down { display: flex; flex: 1; align-items: center; justify-content: center; background: #4a4a4a; }
+.stepper { display: flex; flex-direction: column; width: 22px; height: 32px; flex-shrink: 0; border-left: 1px solid #5a5a5a; }
+.step-up, .step-down { display: flex; flex: 0 0 16px; height: 16px; box-sizing: border-box; align-items: center; justify-content: center; background: #4a4a4a; }
 .step-up { border-bottom: 1px solid #5a5a5a; border-radius: 0 3px 0 0; }
 .step-down { border-radius: 0 0 3px 0; }
 .chevron { display: block; width: 10px; height: 6px; flex-shrink: 0; }
@@ -109,15 +109,15 @@ sp-textfield.bleed-field { width: 44px; flex: 0 0 auto; margin: 0; }
 .bleed-create-info { flex: 1; min-width: 0; margin-right: 10px; }
 .bleed-create-row .muted { margin-top: 0; line-height: 16px; }
 #bleedPreview { margin-top: 2px; font-size: 10px; }
-/* 清零是低频兜底操作，弱化成灰字小按钮；创建出血线是主操作，加大加高突出。 */
-sp-button.quiet-button { width: 56px; min-width: 56px; height: 26px; min-height: 26px; margin: 0; }
-sp-button.quiet-button .button-label { font-size: 11px; font-weight: 400; color: #b8b8b8; }
-sp-button.wide-cta { width: 120px; min-width: 120px; height: 32px; min-height: 32px; }
-sp-button.wide-cta .button-label { font-size: 13px; }
+/* 同一行的动作按钮保持等高；创建出血线用 CTA 样式突出主操作。 */
+sp-button.quiet-button { width: 56px; min-width: 56px; height: 30px; min-height: 30px; margin: 0; }
+sp-button.quiet-button .button-label { font-size: 12px; font-weight: 400; color: #b8b8b8; }
+
+
 
 /* 统一按钮：三个生成按钮相同全宽、36px 高，8px 间距。 */
 sp-button { display: flex; align-items: center; justify-content: center; text-align: center; box-sizing: border-box; margin: 0; flex-shrink: 0; }
-.button-label { display: block; white-space: nowrap; font-size: 12px; font-weight: 600; line-height: 18px; }
+.button-label { display: block; text-align: center; white-space: nowrap; font-size: 12px; font-weight: 600; line-height: 18px; }
 
 /* 图片大小 / 画布大小 卡片 —— 模仿 PS 的「图像大小 / 画布大小」对话框。
    两张卡**左右并排**：面板定宽 420px，各占一半（约 194px），
@@ -129,22 +129,22 @@ sp-button { display: flex; align-items: center; justify-content: center; text-al
 /* 卡片自己是纵向 flex，配合 .size-apply-row 的 margin-top:auto
    把「确认修改」压到底 —— 两张卡行数不同（3 行 vs 2 行），
    不这么写两个按钮就会一高一低。 */
-.size-card { padding: 6px 8px 8px; display: flex; flex-direction: column; }
-/* 标题行：标题靠左，右端放锁链（图片卡）/ 9 格锚点（画布卡）。 */
-.size-card-title-row { display: flex; align-items: center; justify-content: space-between; min-height: 34px; padding: 2px 0 6px; border-bottom: 1px solid #454545; box-sizing: border-box; }
-.size-card-title { font-size: 11px; font-weight: 600; color: #c8c8c8; }
+.size-card { padding: 6px 10px 8px; display: flex; flex-direction: column; }
+/* 两张卡的标题区统一为 42px，给 34px 锚点预留上下空间，保证字段起点对齐。 */
+.size-card-title-row { display: flex; align-items: center; justify-content: space-between; min-height: 42px; padding: 4px 0 3px; border-bottom: 1px solid #454545; box-sizing: border-box; }
+.size-card-title { font-size: 11px; font-weight: 600; line-height: 16px; color: #c8c8c8; }
 /* 锁链按钮挪进标题行（窄卡放不下 PS 那种两行之间的链条位）。 */
 .size-lock { width: 24px; height: 20px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: #3a3a3a; border: 1px solid #4f4f4f; border-radius: 4px; box-sizing: border-box; cursor: pointer; }
 .size-lock.locked { background: #1f4f86; border-color: #1473e6; }
 .icon-chain { display: block; width: 16px; height: 16px; flex-shrink: 0; }
 /* PS 官方对话框风格：**标签在输入框上方**，输入行 = 数值框 + 单位下拉。 */
-.size-field { display: block; padding-top: 6px; }
-.size-field-label { display: block; font-size: 10px; color: #a2a2a2; margin-bottom: 3px; }
-.size-input-row { display: flex; align-items: center; min-width: 0; }
+.size-field { display: block; padding-top: 8px; }
+.size-field-label { display: block; font-size: 11px; line-height: 14px; color: #a2a2a2; margin-bottom: 6px; }
+.size-input-row { display: flex; align-items: center; height: 32px; min-width: 0; }
 /* 单位下拉是**自绘**的（div + JS 菜单）—— sp-picker 真机事件不可控（菜单能弹但选项选不上），
    自绘和自绘数值框同一套路：外观、点击、选中全由 styles.css + main.js 说了算。
-   菜单用 position:absolute 挂在容器下面；80px 宽保证「像素」两字不竖排。 */
-.unit-picker { width: 80px; height: 24px; margin-left: 5px; flex-shrink: 0; position: relative; display: flex; align-items: center; justify-content: space-between; box-sizing: border-box; padding: 0 8px; background: #3c3c3c; border: 1px solid #5a5a5a; border-radius: 4px; color: #e8e8e8; font-size: 11px; cursor: pointer; white-space: nowrap; overflow: visible; }
+   菜单用 position:absolute 挂在容器下面；76px 宽仍能容纳单位名称与箭头。 */
+.unit-picker { width: 76px; height: 32px; margin-left: 5px; flex-shrink: 0; position: relative; display: flex; align-items: center; justify-content: space-between; box-sizing: border-box; padding: 0 8px; background: #3c3c3c; border: 1px solid #5a5a5a; border-radius: 4px; color: #e8e8e8; font-size: 11px; cursor: pointer; white-space: nowrap; overflow: visible; }
 .unit-picker:hover { border-color: #6f6f6f; }
 .unit-chevron { font-size: 14px; color: #d6d6d6; margin-left: 5px; line-height: 16px; }
 .unit-menu { position: absolute; top: calc(100% + 2px); left: 0; min-width: 100%; width: max-content; background: #2b2b2b; border: 1px solid #5a5a5a; border-radius: 4px; z-index: 999; padding: 2px 0; box-shadow: 0 4px 10px rgba(0,0,0,0.4); }
@@ -153,54 +153,16 @@ sp-button { display: flex; align-items: center; justify-content: center; text-al
 /* 下拉分割线（v1.9.16）：对齐 PS 下拉的设计 —— 自定入口（「其它」）与固定项之间隔一条横线。 */
 .unit-divider { flex-shrink: 0; height: 1px; margin: 3px 0; background: #5a5a5a; }
 /* 高度/分辨率行右侧的静态单位文字：左对齐紧贴数值框（居中会空出一大截，老大要求）。 */
-.size-unit-static { flex-shrink: 0; margin-left: 5px; width: 80px; box-sizing: border-box; text-align: left; font-size: 11px; color: #b8b8b8; }
-/* 画布扩展颜色的色块（画布卡，模仿 PS 对话框里下拉右边的颜色预览方块）。
-   背景色由 JS 按当前选项写 inline style（前景/背景要跟随文档的 FG/BG 色）。
-   v1.9.11 起色块可点：弹出 PS 拾色器（悬停加亮边提示可点）。 */
-/* 画布扩展颜色的色块（画布卡，模仿 PS 对话框里下拉右边的颜色预览方块）。
-   背景色由 JS 按当前选项写 inline style（前景/背景要跟随文档的 FG/BG 色）。
-   色块可点（v1.9.11 起本想借 PS 原生拾色器，真机不认；v1.9.13 改弹面板内
-   取色器小面板），悬停加亮边提示可点。外层 wrap 是小面板的定位锚点。 */
+.size-unit-static { flex-shrink: 0; margin-left: 5px; width: 76px; height: 32px; box-sizing: border-box; text-align: left; font-size: 11px; line-height: 32px; color: #b8b8b8; }
+/* 画布扩展颜色色块：点击打开独立拾色弹窗。 */
 .ext-swatch-wrap { position: relative; flex-shrink: 0; margin-left: 5px; display: flex; }
 /* 色块加大一号（v1.9.16，老大反馈图标小）。 */
-.ext-swatch { display: block; width: 26px; height: 22px; box-sizing: border-box; border: 1px solid #5a5a5a; border-radius: 2px; background: #ffffff; cursor: pointer; }
+.ext-swatch { display: block; width: 26px; height: 32px; box-sizing: border-box; border: 1px solid #5a5a5a; border-radius: 2px; background: #ffffff; cursor: pointer; }
 .ext-swatch:hover { border-color: #8ab4e8; }
-/* 取色器小面板：SV 选色区 + 色相条 + 预设色板 + 十六进制输入行。absolute 挂在
-   wrap 下方右对齐（unit-menu 同款做法，真机可用）。SV 区两层渐变叠出
-   「白→纯色横向 × 透明→黑纵向」的 PS 式选色面，点击取色（v1.9.15）。 */
-.ext-popup { position: absolute; top: calc(100% + 4px); right: 0; z-index: 999; background: #2b2b2b; border: 1px solid #5a5a5a; border-radius: 4px; padding: 6px; box-shadow: 0 4px 10px rgba(0,0,0,0.4); }
-.ext-popup-row { display: flex; flex-direction: row; align-items: center; margin-bottom: 4px; }
-.ext-popup-row:last-child { margin-bottom: 0; }
-.ext-popup-sv { position: relative; width: 142px; height: 108px; margin-right: 5px; box-sizing: border-box; border: 1px solid #5a5a5a; cursor: crosshair; }
-/* SV 选色面 = 三层叠（v1.9.20）：底层纯色（JS 写 background-color，随色相变）+
-   两层**静态样式表渐变**遮罩（白→透明横向、黑→透明纵向）。
-   之前由 JS 动态写渐变 background，真机上间歇性失效（整块变黑），故改此稳态结构。 */
-.ext-popup-sv-white { position: absolute; left: 0; top: 0; width: 100%; height: 100%; background: linear-gradient(to right, #ffffff, rgba(255,255,255,0)); }
-.ext-popup-sv-black { position: absolute; left: 0; top: 0; width: 100%; height: 100%; background: linear-gradient(to top, #000000, rgba(0,0,0,0)); }
-/* 位置标识（v1.9.16）：白边小方环标当前选中的 s/v 点；色相条上白色横杠标当前色相。
-   注意 border-radius 在真机不稳（v1.9.8 教训），环用方框不用圆。 */
-.ext-popup-sv-marker { position: absolute; width: 12px; height: 12px; border: 2px solid #ffffff; box-sizing: border-box; }
-.ext-popup-hue { position: relative; width: 14px; height: 108px; box-sizing: border-box; border: 1px solid #5a5a5a; cursor: pointer; background: linear-gradient(to bottom, #ff0000 0%, #ffff00 17%, #00ff00 33%, #00ffff 50%, #0000ff 67%, #ff00ff 83%, #ff0000 100%); }
-.ext-popup-hue-marker { position: absolute; left: -3px; right: -3px; height: 3px; background: #ffffff; border: 1px solid #000000; box-sizing: border-box; }
-.ext-popup-swatch { width: 16px; height: 16px; margin-right: 3px; box-sizing: border-box; border: 1px solid #5a5a5a; cursor: pointer; }
-.ext-popup-swatch:hover { border-color: #8ab4e8; }
-/* 十六进制输入框：撑满 96px 衬底容器（不再带 margin 把内容顶出衬底），
-   透明度 0.45 压深色内部（v1.9.16 起的浅底方案，衬底由 .field-wrap 出）。 */
-sp-textfield.ext-popup-input { width: 100%; margin: 0; opacity: 0.45; }
-/* 小面板十六进制框的衬底变体（v1.9.18）：宽 96px，浅灰衬底同 .field-wrap。
-   双类名提升优先级，压过 .field-wrap 的 88px 默认宽；flex 收缩禁掉。 */
-.field-wrap.field-wrap-hex { width: 96px; flex: 0 0 auto; }
-/* 「应用」按钮（v1.9.23 重排）：收缩容器 .ext-popup-apply-wrap 包住中和
-   sp-button 的内置 auto 外边距（margin:0 真机压不过它，页脚「检查更新」
-   同款坑），容器 flex:1 吃掉中间空隙、justify-content 贴右 —— 按钮钉在
-   行尾右下角，与输入框隔 8px，不再叠在输入框上（老大反馈重叠）。 */
-.ext-popup-apply-wrap { display: flex; flex-direction: row; justify-content: flex-end; align-items: center; flex: 1 1 auto; min-width: 0; margin-left: 8px; }
-sp-button.ext-popup-apply { min-width: 0; height: 22px; padding: 0 10px; margin: 0; flex: 0 0 auto; }
-sp-button.ext-popup-apply .button-label { font-size: 11px; }
 /* 输入框底色调浅（v1.9.16，老大反馈太黑）：先把组件主题整体调到 dark
    （manifest theme），再补一组 Spectrum 变量覆盖；变量若不被这版 UXP 认就维持
    dark 主题的底色，不再更深。 */
-sp-textfield.size-input, sp-textfield.ext-popup-input {
+sp-textfield.size-input {
   --spectrum-textfield-m-background-color: #3c3c3c;
   --mod-textfield-background-color: #3c3c3c;
   --spectrum-alias-input-background-color: #3c3c3c;
@@ -210,9 +172,10 @@ sp-textfield.size-input, sp-textfield.ext-popup-input {
 /* v1.9.22：底色还是太黑 → 透明度直接写进数值框自己的专属规则（不再依赖
    .field-wrap > sp-textfield 的子选择器组合，真机上那招可能没匹配上），
    衬底同步提亮到 #909090。内部视觉约 #5d，白字柔化为 #c2（PS 对话框观感）。 */
-sp-textfield.size-input { width: 88px; flex: 0 0 auto; margin: 0; opacity: 0.45; }
+sp-textfield.size-input { width: 88px; height: 32px; min-height: 32px; flex: 0 0 auto; margin: 0; box-sizing: border-box; opacity: 0.45; }
 /* 单位下拉由 sp-picker 承担（见上）；分辨率行固定 PPI。 */
 /* 确认修改行：右对齐的按钮；margin-top:auto 让它贴卡片底部。 */
+
 .size-apply-row { display: flex; justify-content: flex-end; align-items: center; padding-top: 8px; margin-top: auto; border-top: 1px solid #454545; }
 /* 还原（弱化小按钮）+ 确认修改（主按钮）并排，中间 8px。 */
 .size-apply-row sp-button + sp-button { margin-left: 8px; }
@@ -249,6 +212,7 @@ sp-button.guide-button.sub-guide:nth-child(2) { margin-right: 8px; }
    就是不这样才没贴住右边（与 .update-button 同一个坑）。 */
 sp-button.compact-button { width: 96px; min-width: 96px; height: 30px; min-height: 30px; margin: 0; }
 sp-button.compact-button .button-label { font-size: 12px; }
+sp-button.compact-button.wide-cta { width: 120px; min-width: 120px; }
 .bottom-actions { display: flex; flex-direction: row; padding-top: 10px; margin-top: 10px; border-top: 1px solid #454545; }
 sp-button.utility-button { flex: 1; width: 0; min-width: 0; height: 36px; min-height: 36px; padding: 0 6px; }
 sp-button.utility-button:first-child { margin-right: 8px; }

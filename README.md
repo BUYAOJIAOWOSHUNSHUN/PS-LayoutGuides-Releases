@@ -1,74 +1,80 @@
-﻿# 品牌版式标准规范 PS 插件
+# 品牌版式标准规范 PS 插件 v2.0.0
 
-品牌版式标准规范是一款 Adobe Photoshop 面板插件，按品牌标准一键生成**版心线、出血线与 LOGO 高度线**，让不同尺寸、不同分辨率的画布始终套用同一套版式比例。
+本版本从 2.0.0 开始编号，整合画布大小修复、独立拾色器、“线”字图标、参考线颜色、RGB/CMYK 切换与界面对齐。需要 Photoshop 2026（27.0）或更高版本；当前本机验证版本为 27.9。
 
-本仓库是插件的公开下载页，同时也是它的在线更新源。
+插件列表和折叠面板使用“线”字像素马赛克图标，提供普通屏与高分屏尺寸。
 
-## 下载
+## 下载 v2.0.0
 
-当前版本 **v1.9.24** · 需要 Photoshop 27.0.0（2026）及以上
+- [CCX 安装包](https://github.com/BUYAOJIAOWOSHUNSHUN/PS-LayoutGuides-Releases/releases/download/v2.0.0/PS-LayoutGuides-v2.0.0.ccx)
+- [手动安装 ZIP](https://github.com/BUYAOJIAOWOSHUNSHUN/PS-LayoutGuides-Releases/releases/download/v2.0.0/PS-LayoutGuides-v2.0.0-portable.zip)
+- [发布说明与 SHA-256 校验文件](https://github.com/BUYAOJIAOWOSHUNSHUN/PS-LayoutGuides-Releases/releases/tag/v2.0.0)
 
-- [**下载免安装版 ZIP（推荐）**](https://github.com/BUYAOJIAOWOSHUNSHUN/PS-LayoutGuides-Releases/raw/main/.download/PS-LayoutGuides-v1.9.24-portable.zip)
-  —— 解压后把整个文件夹放进 Photoshop 的 `Plug-ins` 目录，重启即可，不用安装。
-- [下载安装包 .ccx](https://github.com/BUYAOJIAOWOSHUNSHUN/PS-LayoutGuides-Releases/raw/main/.download/PS-LayoutGuides-v1.9.24.ccx)
-  —— 双击由 Creative Cloud 安装，可覆盖升级旧版。
-- [查看全部历史版本](https://github.com/BUYAOJIAOWOSHUNSHUN/PS-LayoutGuides-Releases/tags)
+## 参考线颜色
 
-> .ccx 未签名，需要先在 Photoshop 里打开「首选项 → 增效工具 → 启用开发人员模式」才装得上。
-> 图省事的话直接用免安装版。
+- CMYK 模块的出血线使用 Photoshop 洋红预设色；版心线、LOGO 高度线、背书高度线使用青色。
+- 创建时直接调用 Photoshop 的原生彩色参考线命令，沿用面板中已填写的尺寸，无需再填写原生窗口。
+- 出血线仍从画布四边向内缩，四边数值可独立设置。
+- 重新点创建会重建本次插件会话管理的参考线，以恢复指定颜色；不会叠加重复线，也不会认领其它来源的参考线。
+- Photoshop 返回的颜色、方向、归属或位置不符时，整次更新回滚。普通 Guide 查询不提供颜色，因此这里核对的是原生创建命令的返回结果。
+- “删除辅助线”继续执行已有的清除当前文档全部参考线功能。
 
-## 安装
+## RGB / CMYK 切换
 
-### 免安装版（推荐）
+- 点击文档信息右侧的 RGB / CMYK，调用 Photoshop“图像 → 模式”对应的原生命令。
+- 明确选择不拼合、不合并、不栅格化。转换前后核对图层结构、类型和文字；不符合保留要求时回滚。
+- 一次转换对应一条历史记录；已处于目标模式时不重复转换。
+- 若 Photoshop 原生转换会移除某个调整层，插件保留原模式与全部图层并提示该图层名称。本机曲线调整层案例已触发此保护。
+- 颜色仍按照 Photoshop 的模式转换规则处理，不保证转换前后色彩完全相同。
 
-1. 下载 ZIP 并解压，得到一个文件夹。
-2. 把整个文件夹拷进 Photoshop 的 `Plug-ins` 目录，例如
-   `C:\Program Files\Adobe\Adobe Photoshop 2026\Plug-ins\`
-3. 重启 Photoshop，在「增效工具」菜单里打开面板。
+## 界面对齐
 
-### .ccx 安装包
+统一两张尺寸卡的标题、标签和输入行，以及按钮、单位切换、出血设置与页脚的对齐，保留深色面板和现有操作顺序。
 
-先打开「首选项 → 增效工具 → 启用开发人员模式」，再双击 .ccx。
+## 画布大小
 
-## 在线更新
+- 输入目标宽高，选择单位和九格锚点，再点“确认修改”。回车只结束输入，不修改文档。
+- 扩展颜色支持前景色、背景色、白色、黑色、中灰和自定颜色。有背景层时只填新增画布；没有背景层时新增区域保持透明。
+- 画布修改与填色合为一条历史记录。填色或状态恢复失败时回滚，状态栏说明出错阶段。
+- 切换文档、尺寸或分辨率变化后，旧输入会刷新。仅辅助线变化时保留画布输入。
+- 快速蒙版、选区越过画布边界等无法可靠恢复状态的情况会在修改前中止。
 
-面板底部点「检查更新」→ 有新版会出现「下载并安装更新」→ 第一次需要选一次插件所在文件夹
-（之后会记住）→ **完全退出并重启 Photoshop**，新版本才生效，只关面板不算。
+## 独立拾色弹窗
 
-插件如果装在 `C:\Program Files` 下，该目录默认不可写，自动更新会失败并退回「打开发布页」
-按钮。两种解法，任选一种：
+点击扩展颜色色块或选“其它”，打开模仿 Photoshop 布局的 UXP 弹窗：
 
-- 给插件文件夹单独授权（管理员执行一次，之后一直有效）：
-  ```
-  icacls "C:\Program Files\Adobe\Adobe Photoshop 2026\Plug-ins\品牌版式标准规范PS插件-v1.9.24" /grant "%USERNAME%:(OI)(CI)M" /T
-  ```
-- 或者把插件挪到用户级目录：`%APPDATA%\Adobe\UXP\Plugins\External\`
+- 大面积饱和度/明度方块与竖向色相条，支持拖动。
+- 新颜色和当前颜色并排预览。
+- HSB、RGB、HEX 数值输入联动。
+- “确定”保存自定颜色；“取消”、Esc 或关闭窗口保留原颜色。
 
-## 目录结构
+这是插件实现的精简拾色器，未调用 Photoshop 原生拾色窗口，也不包含吸管、色库或色域警告。
 
-- `manifest.json` —— 插件清单。**面板的「检查更新」是从这里的 `version` 读远端版本号的**，
-  所以每次发新版必须改这个值。
-- `index.html` / `styles.css` —— 面板界面
-- `bootstrap.js` —— 入口
-- `src/` —— 逻辑模块
-- `assets/` —— 图标资源（PNG，更新时按二进制写入）
-- `docs/` —— 接口笔记
-- `.download/` —— 上面下载区用的安装包。**故意用 `.` 开头**：插件的更新逻辑会跳过以 `.`
-  开头的路径，否则一键更新时会把这几十 KB 的包也写进插件目录。
+## 文件
 
-## 发新版要做什么
+- index.html、styles.css：面板。
+- color-picker.css、src/color-picker.js、assets/picker-*.png：独立取色器。
+- assets/icon-line*.png、manifest.json 的 icons：插件与折叠面板图标。
+- src/canvas-service.js：画布事务、选区与填色。
+- src/color-mode-service.js：原生模式转换、图层检查与事务回滚。
+- src/photoshop-host.js：Photoshop 接口适配。
+- src/main.js：面板交互与状态保护。
+- docs/API-NOTES.md：接口笔记；历史章节只代表各自记录时的情况。
 
-1. 改 `manifest.json` 里的 `version`（例如 `1.8.2` → `1.8.3`）。
-2. 同步改 `src/update-config.js` 里的 `VERSION`，两处必须一致。
-3. 用打包脚本生成 .ccx 与免安装 ZIP，传进 `.download/`，文件名里的版本号要一起改。
-4. 把本文件「下载」区的版本号与上面两条链接改成新版本。
-5. 提交。
+## 验证范围
 
-## 注意
+v2.0.0 已完成 35 项自动检查，以及 Photoshop 27.9 临时文档上的 34 项原生模块场景检查（参考线 18 项、模式转换 16 项）。画布模块沿用 v1.9.25 已通过的 20 项临时文档检查。
 
-- 仓库必须是**公开**的。更新逻辑不带访问令牌，私有仓库读不到（会报 404）。
-- 更新是按文件逐个从 raw 地址拉取覆盖，不是下载 zip —— UXP 没有解压能力。
+上述真机检查通过脚本直接运行被测模块，未覆盖安装后的非模态整面板流程。界面在 Photoshop 的模态预览中检查过；该预览容器内的模式切换未能执行，事务已回滚。因此，安装后的完整面板交互和 CCX 安装流程仍待验收。开发验证文件保存在本地版本归档，不随源码或安装包分发。
 
-## 版权
+## 安装与升级
+
+安装前保存工作并完全退出 Photoshop。双击 CCX，按 Creative Cloud 提示操作；完成后重新打开 Photoshop，通过“增效工具”菜单打开面板，检查页脚是否为 v2.0.0。
+
+手动升级：解压 ZIP，先把已有插件文件夹完整备份到插件目录以外，再将解压所得插件文件夹内的全部内容复制到原安装目录。保留 manifest.json 在安装目录根层，不要多嵌套一层文件夹。重启 Photoshop 后生效。
+
+首次以开发方式加载：使用 Adobe UXP Developer Tool 添加解压所得的 manifest.json，然后加载插件。
+
+插件内的“检查更新”读取此 GitHub 仓库的正式 Release 与版本信息。若在线升级不可用，可从上方下载包手动升级。
 
 ©蛋生品牌设计

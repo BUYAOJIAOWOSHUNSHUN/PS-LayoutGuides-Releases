@@ -2,9 +2,18 @@
   "manifestVersion": 5,
   "id": "com.local.layout-guides",
   "name": "品牌版式标准规范PS插件",
-  "version": "1.9.24",
+  "version": "2.0.0",
   "main": "index.html",
   "theme": "dark",
+  "icons": [
+    {
+      "width": 24,
+      "height": 24,
+      "path": "assets/icon-line.png",
+      "scale": [1, 2],
+      "theme": ["all"]
+    }
+  ],
   "host": {
     "app": "PS",
     "minVersion": "27.0.0",
@@ -37,6 +46,15 @@
     {
       "type": "panel",
       "id": "layoutPanel",
+      "icons": [
+        {
+          "width": 23,
+          "height": 23,
+          "path": "assets/icon-line-panel.png",
+          "scale": [1, 2],
+          "theme": ["all"]
+        }
+      ],
       "label": {
         "default": "品牌版式标准规范PS插件"
       },

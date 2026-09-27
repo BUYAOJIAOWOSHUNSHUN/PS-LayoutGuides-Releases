@@ -1,6 +1,7 @@
 # Photoshop UXP 接口笔记
 
 这份文件记录开发过程中实测／查证过的接口行为和坑，避免以后重复踩。
+文中验证文件路径指向开发时的本地版本归档；验证文件不随公开源码或安装包分发。
 每条都注明依据，标注「待真机验证」的表示只在逻辑层验证过。
 
 ---
@@ -22,63 +23,46 @@ value >> 16            // 错误：会截断小数，负数还会算错
 
 ---
 
-## 2. 参考线（Guide）不能单独设色？—— DOM 不行，Action Manager 可以（待真机终验）
+## 2. 参考线独立颜色（v2.0.0）
 
-`src/guide-service.js`、`src/photoshop-host.js`
+UXP Guide DOM 没有颜色字段。旧版通过猜测 Clr / color / guidesColor 参数，并在“成功建线、颜色未知”时视为成功；这不能证明颜色已经生效。
 
-**UXP DOM API 结论（v1.9.6 前的依据，仍然成立）：**
-- `Guide` 对象只有这些成员：`coordinate`、`direction`、`docId`、`id`、`parent`、`typename`、`delete()`。
-- 创建方法是 `Guides.add(direction, coordinate)`，只接收方向和坐标。
-- **DOM 层没有任何颜色字段。**
+2026-09-27 本机 Photoshop 27.9 验证的新路径：
 
-**v1.9.7 起的补充结论（来自「新建参考线」对话框能选颜色的反向推理）：**
-- 既然 PS 自带的「新建参考线」对话框能随线选颜色，说明**底层数据模型支持单条参考线带色**，
-  只是 DOM API 没暴露 —— 走 batchPlay（Action Manager）建线即可带上 RGB 颜色。
-- **v1.9.8 真机实测**：`new:{_obj:"guide", position, orientation, color:{_obj:"RGBColor"}}`
-  这一种写法**颜色不生效**（线出来了、颜色没上，或报错退回普通线）——键名是猜的，猜错了。
-- **v1.9.9 改为多方案探测**（photoshop-host.addColoredGuide）：候选颜色键按可能性排序 ——
-  ① `"Clr "`（charID）+ RGBC 对象（AM 里所有带色对象的标准写法）；
-  ② `"color"`（stringID，v1.9.8 老方案）；③ `"guidesColor"`（PS 官方术语表
-  PIStringTerminology.h 里登记过的 stringID，New Guide Layout 的颜色下拉最可能用它）；
-  ④⑤ 同样的键挂在 make 描述符顶层。逐个试，建完用 AM get 回读参考线描述符
-  （`{_ref:"guide", _index: n+1}`，1 基）验证颜色键是否真的写进去了：
-  描述符里有颜色键 = 实锤成功并记住；读得到方向坐标但没颜色键 = 删线换下一个键；
-  回读报错 = 无法验证，按成功收货。全不认才退回普通建线（与 v1.9.8 行为一致）。
-- **待真机终验**：五种键至少一种生效即可；全不生效时只能换思路
-  （例如改用参考线偏好色分组管理，或改用图层线条方案）。
+- 单条创建命令为 `make`，`new._obj` 为 `good`，不是 RGBColor 对象。
+- `new` 包含整数 `$GdCA: 0`、`$GdCR`、`$GdCG`、`$GdCB`，并包含 direction 对应的 orientation 枚举和 pixelsUnit 的 position。
+- 顶层 `guideTarget` 为 `guideTargetCanvas`。不修改全局参考线偏好。
+- 原生“新建参考线版面”对话框选洋红后，返回 RGB 255/74/255。新版出血采用该值，普通线采用青色 74/255/255。
+- 单线创建的实际返回 `result.new` 包含颜色通道、方向、原生目标文档和参考线索引。正式代码逐项核对返回值，并以创建前后 ID 差集核对 DOM 的文档归属、方向、坐标和数量。
+- 通用 `get guide`（ID 或 index）返回位置、方向、归属和 ID，但不含颜色。不能再用“字段缺失但没报错”判断颜色成功。
+- 当前 Guide 查询无法检测用户手动改色，因此不使用仅坐标匹配的“已是最新”捷径。重新点创建时重建本会话拥有的参考线，确保应用指定颜色；失败时整次历史事务回滚。
 
-依据：PS「新建参考线 / 新建参考线版面」对话框自带颜色选项（用户截图）+ Action Manager
-建线事件；`guidesColor` 见 Adobe photoshop-cpp-sdk 仓库 PIStringTerminology.h；
-多方案探测与回读验证为 v1.9.9 新增，真机终验待补。
+捕获证据在 v2.0.0 版本目录的 `验证/guide-color-capture.json` 与 `验证/guide-color-probe.json`；整合验证结果见同目录的验证说明。颜色是参考线的显示色，不是文档 CMYK 印刷像素。
+
+来源：
+- https://developer.adobe.com/photoshop/uxp/2022/ps_reference/classes/guide/
+- https://forums.creativeclouddeveloper.com/t/problem-setting-guides-color-with-batchplay/5629/3
+- https://community.adobe.com/questions-712/adjust-script-to-add-artboard-guides-instead-of-document-guides-1176637
 
 ---
+## 2.1 画布扩展颜色与拾色弹窗（v1.9.25）
 
-## 2.1 画布扩展颜色（v1.9.9，键名有实锤）
+本节替代 v1.9.9 的旧 canvasSize/颜色回退描述。
 
-`src/photoshop-host.js` 的 `resizeCanvas`
+src/photoshop-host.js 调用 src/canvas-service.js。由 executeAsModal 提供 context，在一次 suspendHistory/resumeHistory 内执行以下过程：保存原选区与整幅画布为临时 Alpha 通道、DOM resizeCanvas、加载原画布通道并反选、切到背景层和复合通道、执行 fill、恢复选区与活动图层/通道、移除本次临时通道。
 
-DOM 的 `doc.resizeCanvas` 没有颜色参数，扩展颜色只能走 batchPlay 的 canvasSize 事件。
-下面的键名与结构**从 ScriptListener 公开记录里核实**（如 Script Arsenal 的 Film Edges.jsx），
-不是猜的：
+fill 采用 ActionJSON 的 fill / fillContents / color / RGBColor（绿色键 grain），dialogOptions 为 silent。检查 batchPlay 返回的 error 描述符，不能只依赖 Promise reject。错误触发 resumeHistory(id, false)；显式回滚失败时不能声称已经恢复。
 
-```js
-{
-  _obj: "canvasSize",
-  relative: false,
-  width:  { _unit: "pixelsUnit", _value: 宽 },
-  height: { _unit: "pixelsUnit", _value: 高 },
-  horizontal: { _enum: "horizontalLocation", _value: "left" | "center" | "right" },
-  vertical:   { _enum: "verticalLocation",   _value: "top"  | "center" | "bottom" },
-  // 只在需要扩展颜色时带这两项（"Clr " = 自定颜色）：
-  canvasExtensionColorType: { _enum: "canvasExtensionColorType", _value: "Clr " },
-  canvasExtensionColor: { _obj: "RGBColor", red, grain, blue }
-}
-```
+Photoshop 的 Layers/Channels 集合可能是 Proxy：通过 length 和索引逐项复制，不使用 Array.prototype.slice（真机出现稀疏数组，恢复图层时报 Undefined 错误）。
 
-- 锚点用 horizontal / vertical 两个枚举，与 AnchorPosition 九格一一对应（CANVAS_ANCHOR 表）。
-- 三级回退：带颜色 AM 失败（如文档无背景层）→ 不带颜色 AM → DOM resizeCanvas。
-  颜色没应用上时返回 false，状态栏会提示。
-- 扩展颜色只影响**新增**的画布区域，且只对有背景层的文档生效 —— PS 本身的行为。
+2026-09-27 在 Photoshop 27.9 中以当前模块运行 20 项真实文档检查，覆盖 RGB/CMYK 的 2000×1500→3000×1500、九锚点奇数差值、横扩纵缩、实际像素、选区保留、单步历史恢复和填色错误回滚，全部通过。原画布 Alpha 的新增像素为未选中区域的假设已在这些场景验证。测试证据位于 v1.9.25 本地版本目录的 验证/canvas-native-report.json；v2.0.0 沿用该画布模块。大型复杂文档、快速蒙版、越界选区等未按普通扩展场景泛化通过。
+
+取色器由原生 UXP dialog.showModal({lockDocumentFocus:true}) 承载；模块还处理宿主返回的 Promise，关闭/取消后释放监听并结束调用。静态 PNG 色相条与透明 SV 遮罩用于避免动态 CSS 渐变在 UXP 上的显示差异。HSB/RGB/HEX 均只修改弹窗草稿，确认才交回 main.js。
+
+参考 Adobe 官方文档：
+- https://developer.adobe.com/photoshop/uxp/ps_reference/classes/selection/
+- https://developer.adobe.com/photoshop/uxp/ps_reference/media/batchplay/
+- https://developer.adobe.com/photoshop/uxp/2022/ps-reference/media/executeasmodal
 
 ---
 
@@ -270,3 +254,16 @@ await doc.resizeCanvas(width, height, ps.constants.AnchorPosition[anchor]);
 1. `resizeImage` / `resizeCanvas` 在 UXP 里是否真的生效；
 2. `AnchorPosition` 的枚举名是不是这套（写错会拿到 `undefined`，PS 会抛错）；
 3. 改完能不能 Ctrl+Z 整步撤销 —— 取决于 `executeAsModal` 里的 suspend/resume 是否成对。
+
+## 2.2 RGB / CMYK 保留图层（v2.0.0）
+
+使用 Photoshop“图像 → 模式”对应的 `convertMode`，目标 class 为 `RGBColorMode` / `CMYKColorMode`，显式指定 `flatten:false`、`merge:false`、`rasterize:false`。本机 Photoshop 27.9 内置 UXP 的 `doc.changeMode` 仅明确 `flatten:false`；本版改为显式描述符以覆盖不栅格化要求。
+
+转换处于一个可回滚的历史事务中。前后核对图层 ID、顺序、分组关系、类型、文字及位深；若宿主无法保留这些状态则回滚，并报告失败，不通过自动合并或栅格化完成转换。这里不核对像素颜色一致性，颜色转换本来会改变色彩表示。
+
+原生参数参考作者本人在 Adobe Community 给出的脚本：
+https://community.adobe.com/questions-712/is-there-a-way-to-get-photoshop-to-stop-asking-to-merge-or-don-t-merge-when-chaging-color-modes-1176437
+
+本机临时文档验证记录见版本根目录“验证/mode-native-report.json”。
+
+原生边界：27.9 的 RGB → CMYK `convertMode` 在包含曲线调整层的样稿中会移除该调整层，即使 `flatten:false` / `rasterize:false`；其他文字、智能对象、分组和空像素层仍保留。`mode-native-diagnosis.json` 保存原始返回与转换后层树。本版严格拒绝缺层结果并回滚，不把参数返回成功当作图层保留成功。
