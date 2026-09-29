@@ -216,13 +216,36 @@ async function check(repo, currentVersion, refOverride, subdir) {
   };
 }
 
+async function findChild(folder, name, path) {
+  if (!folder || !folder.isFolder) {
+    throw new Error("目标目录中的路径结构不正确，无法检查：" + path);
+  }
+  let entries;
+  try { entries = await folder.getEntries(); }
+  catch (error) {
+    const detail = error && error.message ? error.message : String(error || "未知错误");
+    throw new Error("无法检查目标目录中的路径 " + path + "（" + detail + "）。为避免覆盖已有文件，已中止。");
+  }
+  let exact = null;
+  const foldedName = String(name).toLowerCase();
+  for (const entry of entries) {
+    if (!entry || typeof entry.name !== "string") continue;
+    if (entry.name === name) exact = entry;
+    else if (entry.name.toLowerCase() === foldedName) {
+      throw new Error("目标目录存在大小写冲突的路径（" + path + " 与 " + entry.name + "）。为避免覆盖错误文件，已中止。");
+    }
+  }
+  return exact;
+}
+
 async function entryAt(root, path) {
   let entry = root;
+  let lookupPath = "";
   const segments = path.split("/");
   for (let i = 0; i < segments.length; i++) {
-    if (!entry || !entry.isFolder) return null;
-    try { entry = await entry.getEntry(segments[i]); }
-    catch (_) { return null; }
+    lookupPath = lookupPath ? lookupPath + "/" + segments[i] : segments[i];
+    entry = await findChild(entry, segments[i], lookupPath);
+    if (!entry) return null;
     if (i < segments.length - 1 && !entry.isFolder) {
       throw new Error("目标目录中的路径结构不正确：" + path);
     }
@@ -244,8 +267,7 @@ async function getFolder(root, segments, create, createdFolders) {
   let path = "";
   for (const segment of segments) {
     path = path ? path + "/" + segment : segment;
-    let next = null;
-    try { next = await folder.getEntry(segment); } catch (_) { next = null; }
+    const next = await findChild(folder, segment, path);
     if (next) {
       if (!next.isFolder) throw new Error("目标目录中的路径结构不正确：" + path);
       folder = next;
@@ -281,8 +303,14 @@ async function cleanupCreatedFolders(root, paths) {
   }
 }
 
-async function rollback(root, attempted, backups, createdFolders) {
+async function rollback(root, attempted, backups, createdFolders, onProgress) {
   const errors = [];
+  const report = (completed, total) => {
+    if (!onProgress) return;
+    try { onProgress({ phase: "rollback", completed, total, percent: null }); }
+    catch (_) { /* Progress observers must not interrupt recovery. */ }
+  };
+  report(0, attempted.length);
   for (let i = attempted.length - 1; i >= 0; i--) {
     const path = attempted[i];
     try {
@@ -294,6 +322,7 @@ async function rollback(root, attempted, backups, createdFolders) {
         if (entry) await entry.delete();
       }
     } catch (error) { errors.push(path + "：" + (error && error.message ? error.message : String(error))); }
+    report(attempted.length - i, attempted.length);
   }
   await cleanupCreatedFolders(root, createdFolders);
   return errors;
@@ -301,7 +330,14 @@ async function rollback(root, attempted, backups, createdFolders) {
 
 // 下载和校验全部完成后才开始写目标目录。若写入失败，会按快照回滚已触及文件。
 async function install(repo, ref, subdir, targetFolder, onProgress) {
+  const report = (phase, completed, total, percent) => {
+    if (!onProgress) return;
+    try { onProgress({ phase, completed, total, percent }); }
+    catch (_) { /* Progress observers must not interrupt the update. */ }
+  };
+  const percent = (completed, total) => total ? Math.floor(completed * 100 / total) : 0;
   if (!targetFolder) throw new Error("尚未选择插件目录。");
+  report("prepare", 0, 0, null);
   const localManifest = await readTargetManifest(targetFolder);
   const files = await listFiles(repo, ref, subdir);
   if (!files.length) throw new Error("仓库里没有找到可更新的文件，请检查 SUBDIR 配置。");
@@ -309,12 +345,11 @@ async function install(repo, ref, subdir, targetFolder, onProgress) {
     throw new Error("仓库里没有找到 manifest.json，SUBDIR 可能填错了。为避免覆盖错误目录，已中止。");
   }
 
+  report("prepare", 0, files.length, null);
   const staged = [];
-  let index = 0;
   let useContentsApi = false;
+  report("download", 0, files.length, 0);
   for (const path of files) {
-    index++;
-    if (onProgress) onProgress(index, files.length, path);
     const fullPath = (subdir ? subdir.replace(/\/+$/, "") + "/" : "") + path;
     let content;
     if (useContentsApi) {
@@ -330,6 +365,7 @@ async function install(repo, ref, subdir, targetFolder, onProgress) {
       }
     }
     staged.push({ path, content });
+    report("download", staged.length, files.length, percent(staged.length, files.length));
   }
 
   const remoteItem = staged.find(item => item.path === "manifest.json");
@@ -339,6 +375,7 @@ async function install(repo, ref, subdir, targetFolder, onProgress) {
   }
 
   // 在插件数据目录保留可恢复的原件；即使回滚遇到磁盘/权限错误，也不会丢掉恢复材料。
+  report("backup", 0, staged.length, 0);
   const dataFolder = await fs.getDataFolder();
   const recoveryName = "layout-guides-update-recovery-" + Date.now() + "-" + Math.floor(Math.random() * 1000000);
   let recoveryFolder;
@@ -349,6 +386,7 @@ async function install(repo, ref, subdir, targetFolder, onProgress) {
 
   // 先为所有受影响文件制作内存快照和磁盘备份。失败时尚未改写插件。
   const backups = Object.create(null);
+  let backupCompleted = 0;
   try {
     for (const item of staged) {
       const entry = await entryAt(targetFolder, item.path);
@@ -361,10 +399,16 @@ async function install(repo, ref, subdir, targetFolder, onProgress) {
       } else {
         backups[item.path] = { exists: false, content: null };
       }
+      backupCompleted++;
+      // 延后报告最后一项，直到恢复信息也已写入，避免准备阶段显示 100%。
+      if (backupCompleted < staged.length) {
+        report("backup", backupCompleted, staged.length, percent(backupCompleted, staged.length));
+      }
     }
     const info = await recoveryFolder.createFile("recovery-info.json", { overwrite: true });
     await info.write(JSON.stringify({ pluginId: PLUGIN_ID, oldVersion: localManifest.version, newVersion: remote.version,
       files: staged.map(item => ({ path: item.path, existed: backups[item.path].exists, binary: isBinary(item.path) })) }, null, 2));
+    report("backup", staged.length, staged.length, 100);
   } catch (error) {
     try { await recoveryFolder.delete(); } catch (_) { /* No target file has changed. */ }
     throw new Error("无法为更新制作完整恢复备份（" + (error && error.message ? error.message : String(error)) + "），插件文件尚未修改。");
@@ -372,13 +416,18 @@ async function install(repo, ref, subdir, targetFolder, onProgress) {
 
   const attempted = [];
   const createdFolders = [];
+  let installCompleted = 0;
+  report("install", 0, staged.length, 0);
   try {
     for (const item of staged) {
       attempted.push(item.path);
       await writeFile(targetFolder, item.path, item.content, createdFolders);
+      installCompleted++;
+      report("install", installCompleted, staged.length, percent(installCompleted, staged.length));
     }
   } catch (error) {
-    const rollbackErrors = await rollback(targetFolder, attempted, backups, createdFolders);
+    const rollbackErrors = await rollback(targetFolder, attempted, backups, createdFolders,
+      event => report(event.phase, event.completed, event.total, event.percent));
     const detail = error && error.message ? error.message : String(error);
     if (rollbackErrors.length) {
       const recoveryPath = recoveryFolder.nativePath || recoveryFolder.name || recoveryName;
@@ -391,6 +440,7 @@ async function install(repo, ref, subdir, targetFolder, onProgress) {
     }
     throw new Error("更新写入失败（" + detail + "）；已恢复本次改动，插件文件保持原版本。");
   }
+  report("complete", staged.length, staged.length, 100);
   try { await recoveryFolder.delete(); } catch (_) { /* A leftover recovery copy does not affect the installed version. */ }
   return staged.length;
 }
@@ -413,27 +463,97 @@ async function readToken() {
   } catch (_) { return ""; }
 }
 
+function normalizedNativePath(value) {
+  if (typeof value !== "string" || !value.trim()) return null;
+  let path = value.trim();
+  const drivePath = /^\/?[A-Za-z]:[\\/]/.test(path);
+  const uncPath = /^\\\\/.test(path) || /^\/\/[^/]/.test(path);
+  if (drivePath || uncPath) {
+    path = path.replace(/\\/g, "/");
+    if (/^\/[A-Za-z]:\//.test(path)) path = path.slice(1);
+    if (/^[A-Za-z]:\//.test(path)) {
+      const drive = path.slice(0, 2).toLowerCase();
+      let tail = "/" + path.slice(3).replace(/\/{2,}/g, "/");
+      while (tail.length > 1 && tail.charAt(tail.length - 1) === "/") tail = tail.slice(0, -1);
+      return { kind: "windows", value: drive + tail.toLowerCase() };
+    }
+    let unc = "//" + path.replace(/^\/+/, "").replace(/\/{2,}/g, "/");
+    while (unc.length > 2 && unc.charAt(unc.length - 1) === "/") unc = unc.slice(0, -1);
+    return { kind: "windows", value: unc.toLowerCase() };
+  }
+  if (path.charAt(0) !== "/") return null;
+  while (path.length > 1 && path.charAt(path.length - 1) === "/") path = path.slice(0, -1);
+  return { kind: "posix", value: path };
+}
+
+function sameNativePath(left, right) {
+  const a = normalizedNativePath(left);
+  const b = normalizedNativePath(right);
+  return !!a && !!b && a.kind === b.kind && a.value === b.value;
+}
+
+async function getCurrentPluginFolder() {
+  let folder;
+  try { folder = await fs.getPluginFolder(); }
+  catch (error) {
+    const detail = error && error.message ? error.message : String(error || "未知错误");
+    throw new Error("无法确认当前运行插件目录（" + detail + "）。请重新打开更新面板后重试。");
+  }
+  if (!folder || !folder.isFolder || !normalizedNativePath(folder.nativePath)) {
+    throw new Error("无法读取当前插件的完整安装位置，请重新打开插件面板后重试。");
+  }
+  return folder;
+}
+
+function assertCurrentPluginFolder(folder, currentFolder) {
+  if (!folder || !normalizedNativePath(folder.nativePath)) {
+    throw new Error("无法确认所选文件夹的完整位置，请重新选择当前插件的安装文件夹。");
+  }
+  if (!sameNativePath(folder.nativePath, currentFolder.nativePath)) {
+    throw new Error("所选目录与当前运行插件的安装目录不一致。请确认并选择当前安装的插件文件夹。");
+  }
+}
+
+async function getTargetLocation() {
+  const folder = await getCurrentPluginFolder();
+  return folder.nativePath;
+}
+
 async function resolveTarget() {
   const token = await readToken();
   if (!token) return null;
   try {
     const folder = await fs.getEntryForPersistentToken(token);
     await readTargetManifest(folder);
+    const currentFolder = await getCurrentPluginFolder();
+    assertCurrentPluginFolder(folder, currentFolder);
     return folder;
   } catch (_) { return null; }
 }
 
 async function chooseTarget() {
-  const folder = await fs.getFolder();
+  const currentFolder = await getCurrentPluginFolder();
+  let folder;
+  try { folder = await fs.getFolder({ initialLocation: currentFolder }); }
+  catch (_) {
+    // 2022 FileSystemProvider 文档没有说明 getFolder 支持 initialLocation。
+    // 若宿主拒绝此提示参数，退回官方支持的普通目录选择器；不自动重试取消操作。
+    folder = await fs.getFolder();
+  }
   if (!folder) return null;
   await readTargetManifest(folder);
-  const folder2 = await fs.getDataFolder();
-  const entry = await folder2.createFile(TOKEN_FILE, { overwrite: true });
-  await entry.write(JSON.stringify({ token: await fs.createPersistentToken(folder) }));
+  assertCurrentPluginFolder(folder, currentFolder);
+  try {
+    const token = await fs.createPersistentToken(folder);
+    await writeDataFile(TOKEN_FILE, JSON.stringify({ token }));
+  } catch (error) {
+    const detail = error && error.message ? error.message : String(error || "未知错误");
+    throw new Error("已选择当前插件目录，但无法保存授权信息（" + detail + "）。请重试授权，成功后下次可直接更新。");
+  }
   return folder;
 }
 
 module.exports = {
   compareVersions, normalizeVersion,
-  check, install, resolveTarget, chooseTarget, writeDataFile
+  check, install, resolveTarget, chooseTarget, getTargetLocation, writeDataFile
 };

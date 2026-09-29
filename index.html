@@ -39,11 +39,19 @@
             </div>
           </div>
           <div class="document-action-row export-row">
-            <span class="document-action-label">导出</span>
-            <div class="mode-switch export-switch" aria-label="快速导出">
-              <div id="exportJPG" class="mode-option" role="button" tabindex="0" title="导出最高质量 JPG">JPG</div>
-              <span class="export-divider" aria-hidden="true"></span>
-              <div id="exportPNG" class="mode-option" role="button" tabindex="0" title="文件 → 导出 → 快速导出为 PNG">PNG</div>
+            <span class="document-action-label export-label">导出</span>
+            <div class="mode-switch export-switch" role="group" aria-label="导出格式">
+              <div class="export-format-row">
+                <div id="exportJPG" class="mode-option" role="button" tabindex="0" title="导出最高质量 JPG">JPG</div>
+                <span class="export-divider" aria-hidden="true"></span>
+                <div id="exportPNG" class="mode-option" role="button" tabindex="0" title="文件 → 导出 → 快速导出为 PNG">PNG</div>
+              </div>
+              <span class="export-row-divider" aria-hidden="true"></span>
+              <div class="export-format-row">
+                <div id="exportPSD" class="mode-option" role="button" tabindex="0" title="储存为 PSD 副本，保留图层">PSD</div>
+                <span class="export-divider" aria-hidden="true"></span>
+                <div id="exportTIFF" class="mode-option" role="button" tabindex="0" title="储存为 TIFF 副本，使用默认选项">TIFF</div>
+              </div>
             </div>
           </div>
         </div>
@@ -237,18 +245,25 @@
       <div id="status" role="status" aria-live="polite">正在启动插件…</div>
     </div>
 
-    <!-- 版本号已经跟在标题后面了，页脚只留更新入口和版权，尽量压薄。 -->
     <footer class="panel-footer">
+      <div id="updateFeedback" class="update-feedback hidden">
+        <div class="update-message-row">
+          <div id="updateStatus" class="update-status" role="status" aria-live="polite"></div>
+          <span id="updatePercent" class="update-percent hidden">0%</span>
+        </div>
+        <div id="updateLocation" class="update-location hidden"></div>
+        <div id="updateProgress" class="update-progress hidden" role="progressbar" aria-label="更新进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+          <div id="updateProgressFill" class="update-progress-fill"></div>
+        </div>
+      </div>
       <div class="update-row">
         <!-- UXP 给 sp-button 内置 auto 外边距且压不过它的内部样式（margin:0 无效，真机实测）。
              包一层宽度由内容决定的 div，容器里没有自由空间，auto margin 自然归零 —— 结构级解决。 -->
         <div class="update-left">
           <sp-button id="checkUpdate" variant="secondary" class="update-button"><span class="button-label">检查更新</span></sp-button>
           <!-- 版本号跟着「检查更新」走：查更新时一眼能对上「本地是什么版本、远端是什么版本」。 -->
-          <span id="footerVersion" class="footer-version">v2.1.0</span>
-          <!-- v1.9.19：更新入口收进行内（老大反馈「下载并安装更新」被 width:100%
-               撑满整行、还和「手动更新」错位叠压）。更新消息统一走底部状态条。 -->
-          <sp-button id="installUpdate" variant="cta" class="install-button hidden">下载并安装更新</sp-button>
+          <span id="footerVersion" class="footer-version">v2.1.1</span>
+          <sp-button id="installUpdate" variant="cta" class="install-button hidden" title="下载并自动安装更新"><span class="button-label">下载</span></sp-button>
           <!-- 手动更新：链接样式的文字按钮（悬停下划线+高亮），点了打开 GitHub 发布页自行下载覆盖。 -->
           <div id="openRelease" class="release-link hidden" role="button" tabindex="0">手动更新</div>
         </div>

@@ -18,7 +18,7 @@ const BLEED_FIELDS = ["top", "bottom", "left", "right"];
 const BLEED_LABELS = { top: "上", bottom: "下", left: "左", right: "右" };
 const MODE_BUTTONS = ["update", "logo", "endorsement", "bleed"];
 // 三种生成按钮位于页签内容之外，两页真正共用，避免尺寸与事件不同步。
-const ALL_BUTTONS = MODE_BUTTONS.concat(["clear", "visibility", "guideLock", "applyImageSize", "applyCanvasSize", "restoreImageSize", "restoreCanvasSize", "modeRGB", "modeCMYK", "exportJPG", "exportPNG"]);
+const ALL_BUTTONS = MODE_BUTTONS.concat(["clear", "visibility", "guideLock", "applyImageSize", "applyCanvasSize", "restoreImageSize", "restoreCanvasSize", "modeRGB", "modeCMYK", "exportJPG", "exportPNG", "exportPSD", "exportTIFF"]);
 
 let currentTab = "screen";
 let bleedLocked = true;         // 出血四边默认锁定（老大要求）
@@ -35,6 +35,8 @@ let lastResolution = null;
 let lastDocWidth = null;    // 文档当前像素尺寸缓存，给「还原」按钮用
 let lastDocHeight = null;
 let pendingUpdate = null;
+let updateBusy = false;
+let installedUpdateVersion = "";
 let registered = false;
 
 // 9 格锚点的标识顺序，与 PS 的「画布大小」对话框一致：左上→右下。
@@ -934,7 +936,7 @@ async function quickExport(format) {
   if (!doc) { status("当前没有打开的文档。", true); return; }
   service.busy = true;
   disableAll(true);
-  let message = "已取消导出。", failed = false;
+  let message = "已取消导出。", failed = false, exportCancelled = false;
   try {
     if (format === "png") {
       status("正在调用 Photoshop 快速导出为 PNG…");
@@ -942,15 +944,29 @@ async function quickExport(format) {
       message = "已调用 Photoshop 快速导出为 PNG。";
       return;
     }
+    const saveFormats = {
+      jpg: { extension: "jpg", types: ["jpg"] },
+      psd: { extension: "psd", types: ["psd"] },
+      tiff: { extension: "tif", types: ["tif", "tiff"] }
+    };
+    const saveFormat = saveFormats[format];
+    if (!saveFormat) throw new Error("请选择 JPG、PNG、PSD 或 TIFF 格式。");
     const name = String(doc.name || "未标题").replace(/\.(psd|psb|jpe?g|png|tiff?|webp|gif|bmp|pdf)$/i, "").replace(/[\\/:*?"<>|]/g, "_");
-    const file = await storage.localFileSystem.getFileForSaving(name + "." + format, { types: [format] });
+    const file = await storage.localFileSystem.getFileForSaving(name + "." + saveFormat.extension, { types: saveFormat.types });
     if (!file) return;
     status("正在导出 " + format.toUpperCase() + "…");
-    await host.modal(context => exportDocument(ps, doc, format, file, context), "快速导出 " + format.toUpperCase());
+    await host.modal(async context => {
+      try { return await exportDocument(ps, doc, format, file, context); }
+      catch (error) {
+        // Photoshop can strip custom Error fields across executeAsModal.
+        exportCancelled = !!(error && (error.cancelled || error.code === "EXPORT_CANCELLED"));
+        throw error;
+      }
+    }, "快速导出 " + format.toUpperCase());
     message = "已导出 " + format.toUpperCase() + "：" + file.name + "。";
   } catch (error) {
     console.error(error);
-    if (error && (error.cancelled || error.code === "EXPORT_CANCELLED")) {
+    if (exportCancelled || (error && (error.cancelled || error.code === "EXPORT_CANCELLED"))) {
       message = "已取消导出。";
     } else {
       message = "导出失败：" + errorText(error);
@@ -1058,7 +1074,7 @@ async function toggleGuideLock() {
 
 /* ---------- 在线更新 ---------- */
 
-// 页脚只有两行空间，错误信息里那种超长 URL 会把整个页脚撑变形（真机实测过）。
+// 页脚空间有限，错误信息里的超长 URL 会把整个页脚撑变形。
 // 这里把 URL 收成「域名/…/末段」，保留辨识度又不占宽度。
 function tidyMessage(text) {
   return String(text == null ? "" : text).replace(/https?:\/\/[^\s"']+/g, function (url) {
@@ -1071,9 +1087,33 @@ function tidyMessage(text) {
   });
 }
 
-// 更新消息统一走底部状态条（v1.9.19）：之前写在页脚中段，把窄页脚挤得错位。
+// 更新反馈独立显示，文档轮询和普通操作不会覆盖下载进度。
 function setUpdateStatus(message, error) {
-  status(tidyMessage(message), !!error);
+  el("updateFeedback").className = message ? "update-feedback" : "update-feedback hidden";
+  el("updateStatus").textContent = tidyMessage(message);
+  el("updateStatus").className = error ? "update-status error" : "update-status";
+}
+
+function renderUpdateProgress(progress) {
+  const labels = { prepare: "正在准备更新…", download: "正在下载…", backup: "正在备份…", install: "正在安装…", rollback: "正在恢复原版本…" };
+  const phase = progress && progress.phase;
+  const hasPercent = progress && Number.isFinite(progress.percent) && phase !== "complete";
+  el("updateProgress").className = hasPercent ? "update-progress" : "update-progress hidden";
+  el("updatePercent").className = hasPercent ? "update-percent" : "update-percent hidden";
+  if (hasPercent) {
+    const percent = Math.max(0, Math.min(100, Math.floor(progress.percent)));
+    el("updatePercent").textContent = percent + "%";
+    el("updateProgressFill").style.width = percent + "%";
+    el("updateProgress").setAttribute("aria-valuenow", String(percent));
+    el("updateProgress").setAttribute("aria-label", labels[phase] || "更新进度");
+  }
+  if (labels[phase]) setUpdateStatus(labels[phase]);
+}
+
+function showUpdateLocation(path) {
+  el("updateLocation").textContent = path ? "安装位置：" + path : "";
+  el("updateLocation").title = path || "";
+  el("updateLocation").className = path ? "update-location" : "update-location hidden";
 }
 
 function releasePage() {
@@ -1088,6 +1128,7 @@ function showReleaseButton(show) {
 
 // 自动安装走不通时的兜底出口：直接打开 GitHub 发布页手动下载。
 async function openRelease() {
+  if (updateBusy) return;
   const page = releasePage();
   if (!page) { setUpdateStatus("尚未配置更新仓库，没有可打开的发布页。", true); return; }
   try {
@@ -1100,7 +1141,15 @@ async function openRelease() {
 }
 
 async function checkUpdate() {
+  if (updateBusy || service.busy) return;
+  if (installedUpdateVersion) {
+    setUpdateStatus("v" + installedUpdateVersion + " 已安装，重启 Photoshop 后生效。");
+    return;
+  }
+  updateBusy = true;
   pendingUpdate = null;
+  showUpdateLocation("");
+  renderUpdateProgress(null);
   el("installUpdate").className = "install-button hidden";
   showReleaseButton(false);
   setDisabled("checkUpdate", true);
@@ -1109,10 +1158,9 @@ async function checkUpdate() {
     const result = await update.check(REPO, VERSION, REF_OVERRIDE, SUBDIR);
     pendingUpdate = result;
     if (result.hasUpdate) {
-      // 有新版：同时显示「下载并安装更新」和「打开发布页」，让用户能选一键装或者手动下。
-      setUpdateStatus("发现新版本 v" + result.latest + "（当前 v" + result.current + "）。");
+      setUpdateStatus("发现新版本 v" + result.latest + "。");
       el("installUpdate").className = "install-button";
-      showReleaseButton(true);
+      showReleaseButton(false);
     } else {
       // 没新版：不要显示「打开发布页」—— 已经是最新了还去发布页干嘛？
       // 这条修了一个老 bug：之前无论有没有新版都无条件 showReleaseButton(true)，
@@ -1125,38 +1173,52 @@ async function checkUpdate() {
     setUpdateStatus("检查更新失败：" + errorText(error) + "。可打开发布页手动下载。", true);
     showReleaseButton(true);
   } finally {
+    updateBusy = false;
     setDisabled("checkUpdate", false);
   }
 }
 
 async function installUpdate() {
   let target = null;
-  if (!pendingUpdate || !pendingUpdate.hasUpdate) return;
+  if (updateBusy || service.busy || colorDialogOpen || !pendingUpdate || !pendingUpdate.hasUpdate) return;
+  const release = pendingUpdate;
+  updateBusy = true;
+  service.busy = true;
+  disableAll(true);
+  showReleaseButton(false);
   setDisabled("installUpdate", true);
   setDisabled("checkUpdate", true);
+  renderUpdateProgress(null);
+  showUpdateLocation("");
+  setUpdateStatus("正在准备更新…");
   try {
     target = await update.resolveTarget();
     if (!target) {
-      setUpdateStatus("请选择已安装插件的根文件夹（包含 manifest.json 的文件夹）。");
+      showUpdateLocation(await update.getTargetLocation());
+      setUpdateStatus("请确认下方插件文件夹，无需输入路径；将记住此次授权。");
       target = await update.chooseTarget();
-      if (!target) { setUpdateStatus("已取消选择，更新未执行。"); return; }
+      if (!target) { showUpdateLocation(""); setUpdateStatus("已取消授权，更新未执行。"); return; }
     }
-    setUpdateStatus("正在下载更新…");
-    const count = await update.install(REPO, pendingUpdate.ref, SUBDIR, target, (index, total, path) => {
-      setUpdateStatus("正在更新 " + index + "/" + total + " · " + path);
-    });
-    setUpdateStatus("已更新 " + count + " 个文件。请完全退出并重启 Photoshop，新版本才会生效。");
+    showUpdateLocation("");
+    await update.install(REPO, release.ref, SUBDIR, target, renderUpdateProgress);
+    installedUpdateVersion = release.latest;
+    renderUpdateProgress(null);
+    setUpdateStatus("v" + release.latest + " 已安装，重启 Photoshop 后生效。");
     pendingUpdate = null;
     el("installUpdate").className = "install-button hidden";
     showReleaseButton(false);   // 安装成功后收起「打开发布页」（之前忘了收，成功后还挂在页脚，用户误以为更新失败）
   } catch (error) {
     console.error(error);
+    renderUpdateProgress(null);
     const text = errorText(error);
     setUpdateStatus("更新失败：" + text + " 可点「手动更新」下载覆盖。", true);
     showReleaseButton(true);
   } finally {
+    updateBusy = false;
+    service.busy = false;
     setDisabled("installUpdate", false);
     setDisabled("checkUpdate", false);
+    refresh(false);
   }
 }
 
@@ -1270,6 +1332,8 @@ function start() {
     bindAction(el("modeCMYK"), () => { void changeDocMode("CMYK"); });
     bindAction(el("exportJPG"), () => { void quickExport("jpg"); });
     bindAction(el("exportPNG"), () => { void quickExport("png"); });
+    bindAction(el("exportPSD"), () => { void quickExport("psd"); });
+    bindAction(el("exportTIFF"), () => { void quickExport("tiff"); });
     el("applyCanvasSize").addEventListener("click", () => { void applyCanvasSize(); });
     el("applyCanvasSize").title = "按当前值修改画布大小";
     el("clear").addEventListener("click", () => { void run("clear"); });

@@ -3,7 +3,10 @@
 const FORMATS = Object.freeze({
   jpg: { extension: ".jpg" },
   jpeg: { extension: ".jpg" },
-  png: { extension: ".png" }
+  png: { extension: ".png" },
+  psd: { extension: ".psd" },
+  tiff: { extension: ".tif" },
+  tif: { extension: ".tif" }
 });
 
 function makeError(message, code, cause) {
@@ -73,6 +76,12 @@ function isCancellationError(error, context) {
 
 function cancellationError(cause) {
   const error = makeError("快速导出 PNG 已取消。", "EXPORT_CANCELLED", cause);
+  error.cancelled = true;
+  return error;
+}
+
+function exportCancellationError(cause) {
+  const error = makeError("导出已取消。", "EXPORT_CANCELLED", cause);
   error.cancelled = true;
   return error;
 }
@@ -216,13 +225,11 @@ function bitDepthRank(value, constants) {
 }
 
 function readDocumentState(doc, constants) {
-  const width = Number(doc.width);
-  const height = Number(doc.height);
+  const dimensions = readDocumentDimensions(doc);
+  const width = dimensions.width;
+  const height = dimensions.height;
   const mode = normalizeMode(doc.mode, constants);
   const bitsPerChannel = bitDepthRank(doc.bitsPerChannel, constants);
-  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
-    throw makeError("无法读取文档像素尺寸。", "EXPORT_INVALID_SIZE");
-  }
   if (mode === "UNKNOWN") {
     throw makeError("无法识别文档颜色模式，已停止导出。", "EXPORT_UNSUPPORTED_MODE");
   }
@@ -230,6 +237,86 @@ function readDocumentState(doc, constants) {
     throw makeError("无法识别文档位深，已停止导出。", "EXPORT_UNSUPPORTED_BIT_DEPTH");
   }
   return { width, height, mode, bitsPerChannel };
+}
+
+function readDocumentDimensions(doc) {
+  const width = Number(doc.width);
+  const height = Number(doc.height);
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    throw makeError("无法读取文档像素尺寸。", "EXPORT_INVALID_SIZE");
+  }
+  return { width, height };
+}
+
+function readNativeSaveState(doc, constants) {
+  const dimensions = readDocumentDimensions(doc);
+  return {
+    width: dimensions.width,
+    height: dimensions.height,
+    mode: normalizeMode(doc.mode, constants),
+    bitsPerChannel: bitDepthRank(doc.bitsPerChannel, constants)
+  };
+}
+
+function ensureActiveDocument(ps, expectedId) {
+  if (!ps.app.activeDocument || ps.app.activeDocument.id !== expectedId) {
+    throw makeError("活动文档已改变，请重新选择要导出的文档。", "EXPORT_DOCUMENT_CHANGED");
+  }
+}
+
+async function saveTiffCopy(ps, doc, file, executionContext) {
+  const action = ps.action;
+  if (!action || typeof action.batchPlay !== "function") {
+    throw makeError("当前 Photoshop 环境不支持 TIFF 保存命令。", "EXPORT_SAVE_UNAVAILABLE");
+  }
+
+  let localFileSystem;
+  try {
+    localFileSystem = require("uxp").storage.localFileSystem;
+  } catch (error) {
+    throw makeError("无法访问选定的 TIFF 输出位置。", "EXPORT_SESSION_TOKEN_UNAVAILABLE", error);
+  }
+  if (!localFileSystem || typeof localFileSystem.createSessionToken !== "function") {
+    throw makeError("无法为选定的 TIFF 输出文件建立访问权限。", "EXPORT_SESSION_TOKEN_UNAVAILABLE");
+  }
+
+  checkCancelled(executionContext);
+  ensureActiveDocument(ps, doc.id);
+  let fileToken;
+  try {
+    fileToken = await localFileSystem.createSessionToken(file);
+  } catch (error) {
+    throw makeError("无法取得 TIFF 输出文件的访问权限。", "EXPORT_SESSION_TOKEN_FAILED", error);
+  }
+  checkCancelled(executionContext);
+  ensureActiveDocument(ps, doc.id);
+
+  const descriptor = {
+    _obj: "save",
+    as: { _obj: "TIFF" },
+    in: { _path: fileToken, _kind: "local" },
+    copy: true,
+    _options: { dialogOptions: "dontDisplay" }
+  };
+  const results = await action.batchPlay([descriptor], {
+    synchronousExecution: false
+  });
+  checkCancelled(executionContext);
+  ensureActiveDocument(ps, doc.id);
+
+  const commandResult = Array.isArray(results) ? results[0] : null;
+  if (commandResult && commandResult.result === -128) {
+    const error = makeError("导出已取消。", "EXPORT_CANCELLED", commandResult);
+    error.cancelled = true;
+    throw error;
+  }
+  if (!commandResult || String(commandResult._obj || "").toLowerCase() === "error" ||
+      (commandResult.result !== undefined && commandResult.result !== 0)) {
+    const message = commandResult && commandResult.message
+      ? "Photoshop TIFF 保存失败：" + commandResult.message
+      : "Photoshop 未确认 TIFF 保存成功。";
+    throw makeError(message, "EXPORT_TIFF_SAVE_FAILED", commandResult || results);
+  }
 }
 
 function validateMode(format, mode) {
@@ -258,7 +345,7 @@ function validateInput(ps, doc, format, file, context) {
     throw makeError("当前 Photoshop 文档信息无效。", "EXPORT_INVALID_DOCUMENT");
   }
   if (!Object.prototype.hasOwnProperty.call(FORMATS, String(format || "").toLowerCase())) {
-    throw makeError("仅支持 JPG 和 PNG 格式。", "EXPORT_UNSUPPORTED_FORMAT");
+    throw makeError("仅支持 JPG、PNG、PSD 和 TIFF 格式。", "EXPORT_UNSUPPORTED_FORMAT");
   }
   if (!file) {
     const error = makeError("导出已取消。", "EXPORT_CANCELLED");
@@ -394,18 +481,22 @@ async function cleanupTemporaryDocument(ps, originalDoc, existingIds, temporaryI
 }
 
 async function exportDocument(ps, doc, format, file, executionContext) {
-  const normalizedFormat = String(format || "").toLowerCase() === "jpeg" ? "jpg" : String(format || "").toLowerCase();
+  const requestedFormat = String(format || "").toLowerCase();
+  const normalizedFormat = requestedFormat === "jpeg" ? "jpg" : requestedFormat === "tif" ? "tiff" : requestedFormat;
   // Keep legacy callers on the native Quick Export menu path for PNG. The
   // file argument is intentionally ignored because Photoshop owns its dialog.
   if (normalizedFormat === "png") return exportQuickPNG(ps, doc, executionContext);
   validateInput(ps, doc, normalizedFormat, file, executionContext);
   checkCancelled(executionContext);
 
-  const originalState = readDocumentState(doc, ps.constants);
-  if (originalState.bitsPerChannel === 32) {
+  const isNativeSave = normalizedFormat === "psd" || normalizedFormat === "tiff";
+  const originalState = isNativeSave
+    ? readNativeSaveState(doc, ps.constants)
+    : readDocumentState(doc, ps.constants);
+  if (normalizedFormat === "jpg" && originalState.bitsPerChannel === 32) {
     throw makeError("不支持导出 32 位/通道文档，请先在 Photoshop 中手动转换位深。", "EXPORT_32_BIT_UNSUPPORTED");
   }
-  validateMode(normalizedFormat, originalState.mode);
+  if (normalizedFormat === "jpg") validateMode(normalizedFormat, originalState.mode);
 
   const existingDocs = listDocuments(ps);
   if (!existingDocs.some(item => item.id === doc.id)) {
@@ -433,15 +524,22 @@ async function exportDocument(ps, doc, format, file, executionContext) {
     }
 
     checkCancelled(executionContext);
-    const preparedState = await prepareCopy(copy, ps, normalizedFormat, originalState);
+    const preparedState = isNativeSave
+      ? originalState
+      : await prepareCopy(copy, ps, normalizedFormat, originalState);
     checkCancelled(executionContext);
 
     const saveAs = copy.saveAs;
-    if (!saveAs || typeof saveAs[normalizedFormat] !== "function") {
+    if (normalizedFormat === "psd") {
+      if (!saveAs || typeof saveAs.psd !== "function") {
+        throw makeError("当前 Photoshop 环境不支持 PSD 保存接口。", "EXPORT_SAVE_UNAVAILABLE");
+      }
+      await saveAs.psd(file, { layers: true }, true);
+    } else if (normalizedFormat === "tiff") {
+      await saveTiffCopy(ps, copy, file, executionContext);
+    } else if (!saveAs || typeof saveAs[normalizedFormat] !== "function") {
       throw makeError("当前 Photoshop 环境不支持 " + normalizedFormat.toUpperCase() + " 保存接口。", "EXPORT_SAVE_UNAVAILABLE");
-    }
-
-    if (normalizedFormat === "jpg") {
+    } else if (normalizedFormat === "jpg") {
       await saveAs.jpg(file, { quality: 12, embedColorProfile: true }, true);
     } else {
       const pngMethod = ps.constants && ps.constants.PNGMethod;
@@ -460,7 +558,9 @@ async function exportDocument(ps, doc, format, file, executionContext) {
       bitsPerChannel: preparedState.bitsPerChannel
     };
   } catch (error) {
-    failure = error;
+    failure = isCancellationError(error, executionContext)
+      ? exportCancellationError(error)
+      : error;
   }
 
   const cleanupErrors = await cleanupTemporaryDocument(

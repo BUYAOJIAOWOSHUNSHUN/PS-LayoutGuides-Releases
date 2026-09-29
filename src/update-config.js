@@ -13,6 +13,6 @@
 const REPO = "BUYAOJIAOWOSHUNSHUN/PS-LayoutGuides-Releases";
 const SUBDIR = "";
 const REF_OVERRIDE = "";
-const VERSION = "2.1.0";
+const VERSION = "2.1.1";
 
 module.exports = { REPO, SUBDIR, REF_OVERRIDE, VERSION };

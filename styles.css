@@ -55,7 +55,11 @@ html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
 .document-actions .mode-switch { width: 84px; box-sizing: border-box; margin-left: 0; }
 .document-actions .mode-option { flex: 1; text-align: center; min-width: 0; padding: 3px 4px; }
 .export-row { margin-top: 5px; }
+.export-label { align-self: center; line-height: 16px; }
+.export-switch { flex-direction: column; }
+.export-format-row { display: flex; flex-direction: row; align-items: center; width: 100%; }
 .export-divider { width: 1px; height: 12px; flex-shrink: 0; align-self: center; background: #545454; }
+.export-row-divider { height: 1px; margin: 0 6px; flex-shrink: 0; background: #545454; }
 .export-switch .mode-option:hover { background: #3b4c60; color: #ffffff; }
 .mode-option[disabled] { opacity: 0.45; cursor: default; }
 .document-name { font-size: 13px; font-weight: 600; line-height: 19px; overflow-wrap: break-word; }
@@ -236,11 +240,16 @@ sp-button.utility-button:first-child { margin-right: 8px; }
 .icon-eye { display: block; width: 16px; height: 16px; flex-shrink: 0; }
 sp-button[disabled] .button-label, sp-button[disabled] .icon-trash, sp-button[disabled] .icon-eye { opacity: 0.45; }
 
-/* 页脚只留一行更新入口：检查更新 + 版本号 + （有新版时）下载并安装更新 + 手动更新，
-   版权靠右。更新消息（发现新版本/失败原因等）v1.9.19 起统一走底部状态条，
-   页脚不再为消息让位 —— 之前 #updateStatus 挤在中间、按钮和链接又各占一整行
-   （width:100%），在 420px 页脚里必然错位叠压（老大两次截图反馈）。 */
-.panel-footer { flex-shrink: 0; padding: 5px 14px; border-top: 1px solid #3a3a3a; background: #2b2b2b; max-height: 40%; overflow-y: auto; }
+/* 更新反馈独立于文档操作状态，百分比固定在右侧，按钮保持一行。 */
+.panel-footer { display: flex; flex-direction: column; align-items: stretch; flex-shrink: 0; padding: 5px 14px; border-top: 1px solid #3a3a3a; background: #2b2b2b; max-height: 40%; overflow-y: auto; }
+.update-feedback { width: 100%; flex-shrink: 0; padding: 2px 0 7px; }
+.update-message-row { display: flex; flex-direction: row; align-items: center; min-width: 0; }
+.update-status { flex: 1; min-width: 0; font-size: 11px; line-height: 16px; color: #8ab4e8; overflow-wrap: break-word; word-break: break-all; max-height: 64px; overflow-y: auto; }
+.update-status.error { color: #ffb4a0; }
+.update-location { margin-top: 4px; padding: 5px 7px; border: 1px solid #484848; border-radius: 3px; color: #b8b8b8; font-size: 10px; line-height: 14px; word-break: break-all; max-height: 56px; overflow-y: auto; }
+.update-percent { width: 36px; flex-shrink: 0; margin-left: 8px; text-align: right; font-size: 11px; line-height: 16px; color: #8ab4e8; }
+.update-progress { height: 3px; margin-top: 6px; background: #444; border-radius: 2px; overflow: hidden; }
+.update-progress-fill { width: 0%; height: 3px; background: #2686ed; border-radius: 2px; }
 .update-row { display: flex; flex-direction: row; align-items: center; justify-content: space-between; width: 100%; min-width: 0; }
 /* 收缩容器：宽度=内容宽，sp-button 内置的 auto 外边距在里面分不到自由空间，
    按钮+版本号就贴在行首 —— margin:0 压不过 UXP 内部样式（真机实测），
@@ -251,9 +260,8 @@ sp-button[disabled] .button-label, sp-button[disabled] .icon-trash, sp-button[di
 sp-button.update-button { width: 72px; min-width: 72px; height: 24px; min-height: 24px; flex-shrink: 0; margin: 0; }
 sp-button.update-button .button-label { font-size: 11px; font-weight: 400; line-height: 16px; }
 .signature { color: #a2a2a2; font-size: 10px; line-height: 16px; flex-shrink: 0; min-width: 0; text-align: right; overflow-wrap: break-word; }
-/* 「下载并安装更新」：紧凑行内按钮（v1.9.19 重做，替换掉 width:100% 的 .primary），
-   与「检查更新」同高，字号一致；margin 显式归零防 auto margin 推挤。 */
-sp-button.install-button { width: auto; height: 24px; min-height: 24px; padding: 0 10px; margin: 0 0 0 8px; flex-shrink: 0; }
+/* 「下载」与「检查更新」同高、同字号。 */
+sp-button.install-button { width: 56px; min-width: 56px; height: 24px; min-height: 24px; padding: 0; margin: 0 0 0 8px; flex-shrink: 0; }
 sp-button.install-button .button-label { font-size: 11px; font-weight: 400; line-height: 16px; }
 /* 手动更新：链接样式的文字按钮（悬停下划线 + 文字高亮），v1.9.19 起行内排列
    （不再是 width:100% 居中的独占行）。 */
@@ -283,5 +291,5 @@ sp-button.guide-lock-button[disabled] img { opacity: 0.45; }
 
 .size-input-row .field-wrap { flex: 1; min-width: 0; max-width: 138px; }
 .size-input-row sp-textfield.size-input { min-width: 0; width: 100%; }
-.update-row { flex-wrap: wrap; }
-.update-left { flex-wrap: wrap; }
+.update-row { flex-wrap: nowrap; }
+.update-left { flex-wrap: nowrap; }
