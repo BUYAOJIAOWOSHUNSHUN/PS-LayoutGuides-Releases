@@ -30,9 +30,22 @@
           <div id="dimensions" class="muted">以整个文档画布为基准</div>
         </div>
         <!-- 颜色模式显示 + 切换：高亮的是文档当前模式，点另一个直接转换文档模式。 -->
-        <div class="mode-switch" aria-label="文档颜色模式">
-          <div id="modeRGB" class="mode-option" role="button" tabindex="0">RGB</div>
-          <div id="modeCMYK" class="mode-option" role="button" tabindex="0">CMYK</div>
+        <div class="document-actions">
+          <div class="document-action-row">
+            <span class="document-action-label">模式</span>
+            <div class="mode-switch" aria-label="文档颜色模式">
+              <div id="modeRGB" class="mode-option" role="button" tabindex="0">RGB</div>
+              <div id="modeCMYK" class="mode-option" role="button" tabindex="0">CMYK</div>
+            </div>
+          </div>
+          <div class="document-action-row export-row">
+            <span class="document-action-label">导出</span>
+            <div class="mode-switch export-switch" aria-label="快速导出">
+              <div id="exportJPG" class="mode-option" role="button" tabindex="0" title="导出最高质量 JPG">JPG</div>
+              <span class="export-divider" aria-hidden="true"></span>
+              <div id="exportPNG" class="mode-option" role="button" tabindex="0" title="文件 → 导出 → 快速导出为 PNG">PNG</div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -42,6 +55,7 @@
              一张卡一个单位下拉，控制宽度/高度两行（分辨率固定 PPI）。
              锁链挪到标题行右端（窄卡放不下 PS 那种两行之间的链条位）；
              画布卡的 9 格锚点也在标题行右端。两张卡仍左右并排。 -->
+        <div id="imageSizeSummary" class="image-size-summary" title="预计图像数据量；保存文件大小还取决于格式、压缩和图层">图像大小：—</div>
         <div class="size-columns">
           <!-- 图片大小：模仿 PS「图像大小」对话框 -->
           <div class="parameter-card size-card">
@@ -75,7 +89,7 @@
             </div>
             <div class="size-apply-row">
               <sp-button id="restoreImageSize" variant="secondary" class="quiet-button" title="放弃当前输入，恢复为文档的实际数值"><span class="button-label">还原</span></sp-button>
-              <sp-button id="applyImageSize" variant="cta" class="compact-button" disabled><span class="button-label">确认修改</span></sp-button>
+              <sp-button id="applyImageSize" variant="cta" class="compact-button" disabled><span class="button-label">修改</span></sp-button>
             </div>
           </div>
 
@@ -113,7 +127,7 @@
             </div>
             <div class="size-apply-row">
               <sp-button id="restoreCanvasSize" variant="secondary" class="quiet-button" title="放弃当前输入，恢复为文档的实际数值"><span class="button-label">还原</span></sp-button>
-              <sp-button id="applyCanvasSize" variant="cta" class="compact-button" disabled><span class="button-label">确认修改</span></sp-button>
+              <sp-button id="applyCanvasSize" variant="cta" class="compact-button" disabled><span class="button-label">修改</span></sp-button>
             </div>
           </div>
         </div>
@@ -197,6 +211,8 @@
         </div>
       </section>
 
+    </div>
+
       <div class="bottom-actions">
         <sp-button id="clear" variant="secondary" class="utility-button" disabled aria-label="删除全部辅助线">
           <span class="button-inner">
@@ -210,8 +226,10 @@
             <span id="visibilityLabel" class="button-label">隐藏辅助线</span>
           </span>
         </sp-button>
+        <sp-button id="guideLock" variant="secondary" class="guide-lock-button" disabled aria-label="锁定辅助线" aria-pressed="false" title="锁定辅助线">
+          <img id="guideLockIcon" class="icon-lock" src="assets/icon-unlock.png" alt="">
+        </sp-button>
       </div>
-    </div>
 
     <!-- 操作反馈条（v1.9.14 从标题行挪来）：常驻在内容区与页脚之间的底部空白区，
          靠下对齐 —— 长反馈有限高内部滚动，不会把面板撑变形。 -->
@@ -227,7 +245,7 @@
         <div class="update-left">
           <sp-button id="checkUpdate" variant="secondary" class="update-button"><span class="button-label">检查更新</span></sp-button>
           <!-- 版本号跟着「检查更新」走：查更新时一眼能对上「本地是什么版本、远端是什么版本」。 -->
-          <span id="footerVersion" class="footer-version">v2.0.0</span>
+          <span id="footerVersion" class="footer-version">v2.1.0</span>
           <!-- v1.9.19：更新入口收进行内（老大反馈「下载并安装更新」被 width:100%
                撑满整行、还和「手动更新」错位叠压）。更新消息统一走底部状态条。 -->
           <sp-button id="installUpdate" variant="cta" class="install-button hidden">下载并安装更新</sp-button>

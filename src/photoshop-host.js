@@ -158,6 +158,26 @@ function createPhotoshopHost(ps) {
       if (!active() || active().id !== doc.id) throw new Error("活动文档已改变，请重新点击操作。");
       if (!await this.guideVisibility()) await this.toggleGuides(doc);
     },
+    async guidesLocked() {
+      const results = await ps.action.batchPlay([{
+        _obj: "uiInfo", _target: { _ref: "application", _enum: "ordinal", _value: "targetEnum" },
+        command: "getCommandEnabled", commandID: 2940
+      }], {});
+      const state = results && results[0] && results[0].result;
+      if (!state || typeof state.checked !== "boolean") throw new Error("无法读取辅助线锁定状态。");
+      return state.checked;
+    },
+    async toggleGuideLock(doc) {
+      if (!active() || active().id !== doc.id) throw new Error("活动文档已改变，请重新点击操作。");
+      const before = await this.guidesLocked();
+      if (!active() || active().id !== doc.id) throw new Error("活动文档已改变，请重新点击操作。");
+      const success = await ps.core.performMenuCommand({ commandID: 2940 });
+      if (!success) throw new Error("Photoshop 无法切换辅助线锁定状态。");
+      const after = await this.guidesLocked();
+      if (!active() || active().id !== doc.id) throw new Error("活动文档已改变，请重新查看锁定状态。");
+      if (after === before) throw new Error("辅助线锁定状态未改变。");
+      return after;
+    },
     async toggleGuides(doc) {
       if (!active() || active().id !== doc.id) throw new Error("活动文档已改变，请重新点击操作。");
       const before = await this.guideVisibility();
@@ -213,6 +233,15 @@ function createPhotoshopHost(ps) {
       if (raw.indexOf("RGB") >= 0) return "RGB";
       if (raw.indexOf("GRAY") >= 0 || raw.indexOf("BITMAP") >= 0) return "GRAY";
       return raw || "UNKNOWN";
+    },
+    getBitDepth(doc) {
+      const values = ps.constants.BitsPerChannelType || {};
+      const depth = doc.bitsPerChannel;
+      if (depth == null) return null;
+      for (const entry of [["EIGHT", 8], ["SIXTEEN", 16], ["THIRTYTWO", 32]]) {
+        if (depth === values[entry[0]] || depth === entry[1]) return entry[1];
+      }
+      return null;
     },
     // 原生颜色模式转换包进单一历史事务，并核验图层树、文本和位深。
     async changeMode(doc, mode, context) {

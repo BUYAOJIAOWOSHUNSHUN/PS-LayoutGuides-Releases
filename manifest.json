@@ -2,7 +2,7 @@
   "manifestVersion": 5,
   "id": "com.local.layout-guides",
   "name": "品牌版式标准规范PS插件",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "main": "index.html",
   "theme": "dark",
   "icons": [
@@ -59,11 +59,11 @@
         "default": "品牌版式标准规范PS插件"
       },
       "minimumSize": {
-        "width": 420,
+        "width": 400,
         "height": 400
       },
       "maximumSize": {
-        "width": 420,
+        "width": 520,
         "height": 2560
       },
       "preferredDockedSize": {

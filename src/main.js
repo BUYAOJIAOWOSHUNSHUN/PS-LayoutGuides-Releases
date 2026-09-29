@@ -1,12 +1,14 @@
-﻿"use strict";
+"use strict";
 
 const ps = require("photoshop");
-const { entrypoints, shell } = require("uxp");
+const { entrypoints, shell, storage } = require("uxp");
+const { exportDocument, exportQuickPNG } = require("./export-service.js");
 const { pickColor, rgbToHex } = require("./color-picker.js");
 const { createPhotoshopHost } = require("./photoshop-host.js");
 const { GuideService, errorText } = require("./guide-service.js");
 const { BRANDS, findBrand } = require("./brands.js");
 const update = require("./update-service.js");
+const { unitToPixels, formatUnitValue, imageTarget, imageBytes, formatBytes } = require("./image-size.js");
 const { REPO, SUBDIR, REF_OVERRIDE, VERSION } = require("./update-config.js");
 
 const host = createPhotoshopHost(ps);
@@ -16,19 +18,19 @@ const BLEED_FIELDS = ["top", "bottom", "left", "right"];
 const BLEED_LABELS = { top: "上", bottom: "下", left: "左", right: "右" };
 const MODE_BUTTONS = ["update", "logo", "endorsement", "bleed"];
 // 三种生成按钮位于页签内容之外，两页真正共用，避免尺寸与事件不同步。
-const ALL_BUTTONS = MODE_BUTTONS.concat(["clear", "visibility", "applyImageSize", "applyCanvasSize", "restoreImageSize", "restoreCanvasSize", "modeRGB", "modeCMYK"]);
+const ALL_BUTTONS = MODE_BUTTONS.concat(["clear", "visibility", "guideLock", "applyImageSize", "applyCanvasSize", "restoreImageSize", "restoreCanvasSize", "modeRGB", "modeCMYK", "exportJPG", "exportPNG"]);
 
 let currentTab = "screen";
 let bleedLocked = true;         // 出血四边默认锁定（老大要求）
 let bleedUnit = "mm";
 let imageLock = true;           // 图片大小的「锁定宽高比」
 let canvasAnchor = "center";    // 画布大小的锚点（9 选 1）
-let aspectRatio = 1;            // 当前文档的宽高比，用于锁定时换算
 let visibilityReading = false;
 let timer = null;
 let initialized = false;
 let lastSignature = null;
 let lastCanvasSnapshot = null;
+let lastImageSnapshot = null;
 let lastResolution = null;
 let lastDocWidth = null;    // 文档当前像素尺寸缓存，给「还原」按钮用
 let lastDocHeight = null;
@@ -88,7 +90,7 @@ function setDisabled(id, disabled) {
 // 「不透明度」被当成快捷输入跟着变。preventDefault 挡不住这层透传。
 // 改用真输入控件后：聚焦期间宿主不再接收按键（官方内置插件同款行为），
 // 光标、拖拽选区也都是原生的。代价是控件内部底色为组件写死的深灰（功能优先）。
-// 读写统一走 readXxx/writeXxx；「确认修改」提交、失焦提交等语义不变。
+// 读写统一走 readXxx/writeXxx；「修改」提交、失焦提交等语义不变。
 
 function disableAll(disabled) {
   for (const id of ALL_BUTTONS) setDisabled(id, disabled);
@@ -320,6 +322,7 @@ function refresh(explicit) {
   if (service.busy) return;
   try {
     const snapshot = service.snapshot();
+    if (snapshot) snapshot.bitDepth = host.getBitDepth(host.active());
     const signature = JSON.stringify(snapshot);
     const changed = signature !== lastSignature;
     lastSignature = snapshot ? signature : null;
@@ -327,10 +330,14 @@ function refresh(explicit) {
     setDisabled("clear", !snapshot || !(snapshot.ownedCount + snapshot.otherCount));
     if (!snapshot) {
       lastCanvasSnapshot = null;
+      lastImageSnapshot = null;
+      sizeLastEdited = null;
+      for (const field of SIZE_FIELDS) sizeDirty[field] = false;
+      renderImageSizeSummary();
+      renderGuideLock(false);
       lastResolution = null;
       lastDocWidth = null;
       lastDocHeight = null;
-      aspectRatio = 1;
       renderDocMode("");
       el("documentName").textContent = "请打开 Photoshop 文档";
       el("dimensions").textContent = "以整个文档画布为基准";
@@ -348,27 +355,29 @@ function refresh(explicit) {
     const l = snapshot.layout;
     const canvasSnapshot = { id: snapshot.id, width: l.width, height: l.height, resolution: snapshot.resolution };
     const canvasChanged = !sameCanvasDocument(canvasSnapshot, lastCanvasSnapshot);
+    const imageSnapshot = { ...canvasSnapshot, mode: snapshot.mode, bitDepth: snapshot.bitDepth };
+    const imageChanged = !sameImageDocument(imageSnapshot, lastImageSnapshot);
+    lastImageSnapshot = imageSnapshot;
     lastCanvasSnapshot = canvasSnapshot;
     lastResolution = snapshot.resolution;
     lastDocWidth = l.width;
     lastDocHeight = l.height;
-    aspectRatio = l.width / l.height || 1;
     el("documentName").textContent = snapshot.name;
     el("dimensions").textContent = px(l.width) + " × " + px(l.height) + " · " + format(snapshot.resolution) + " PPI · " + snapshot.mode;
     renderDocMode(snapshot.mode);
-    // 文档变了（切换 / 撤销 / 确认修改成功）就以文档为准，清掉编辑标记；
+    // 文档变了（切换 / 撤销 / 修改成功）就以文档为准，清掉编辑标记；
     // 文档没变时，聚焦中或编辑过的框不能回写，否则用户输入会被冲掉。
-    if (changed) {
+    if (imageChanged) {
       for (const field of ["imageWidth", "imageHeight", "imageResolution"]) sizeDirty[field] = false;
       sizeLastEdited = null;   // 文档已变（撤销/修改成功），联动方向也作废
     }
     if (canvasChanged) { sizeDirty.canvasWidth = false; sizeDirty.canvasHeight = false; }
-    const keepUserInput = field => !(field.indexOf("canvas") === 0 ? canvasChanged : changed)
+    const keepUserInput = field => !(field.indexOf("canvas") === 0 ? canvasChanged : imageChanged)
       && (sizeDirty[field] || sizeFocus === field);
     // 图片大小：宽/高按当前单位换算显示，分辨率固定 PPI。
     if (!keepUserInput("imageWidth")) writeSizeValue("imageWidth", formatUnitValue(l.width, imageUnit, snapshot.resolution));
     if (!keepUserInput("imageHeight")) writeSizeValue("imageHeight", formatUnitValue(l.height, imageUnit, snapshot.resolution));
-    if (!keepUserInput("imageResolution")) writeSizeValue("imageResolution", Math.round(snapshot.resolution));
+    if (!keepUserInput("imageResolution")) writeSizeValue("imageResolution", snapshot.resolution);
     // 画布大小：宽/高按当前单位换算显示。
     if (!keepUserInput("canvasWidth")) writeSizeValue("canvasWidth", formatUnitValue(l.width, canvasUnit, snapshot.resolution));
     if (!keepUserInput("canvasHeight")) writeSizeValue("canvasHeight", formatUnitValue(l.height, canvasUnit, snapshot.resolution));
@@ -378,6 +387,7 @@ function refresh(explicit) {
     if (changed || explicit) {
       status(snapshot.ownedCount ? "已就绪 · 当前文档已有 " + snapshot.ownedCount + " 条插件辅助线。" : "已就绪 · 可创建版心、LOGO 高度线或出血线。");
     }
+    renderImageSizeSummary();
     void syncVisibility(snapshot.id);
   } catch (error) {
     disableAll(true);
@@ -387,7 +397,7 @@ function refresh(explicit) {
 
 /* ---------- 图片大小 / 画布大小 编辑器 ---------- */
 
-// 尺寸使用原生 sp-textfield；失焦或回车仅结束输入，点「确认修改」才修改文档。
+// 尺寸使用原生 sp-textfield；失焦或回车仅结束输入，点「修改」才修改文档。
 const SIZE_FIELDS = ["imageWidth", "imageHeight", "imageResolution", "canvasWidth", "canvasHeight"];
 
 /* 长度单位（模仿 PS 新建 / 画布大小对话框）：全部以英寸为桥互相换算。
@@ -401,7 +411,7 @@ let canvasUnit = "cm";  // 画布大小卡的单位
 // 「灰色」改成「中灰」（v1.9.23，老大反馈）：固定值是 128,128,128 的中间灰，
 // 叫「中灰」更直观，避免和「随便一种灰」混淆。
 // 点色块或选「其它」打开独立 UXP 拾色弹窗；确认后才保存自定颜色。
-// 前景/背景在点「确认修改」时现场读文档的 FG/BG（随用随取，不缓存）；
+// 前景/背景在点「修改」时现场读文档的 FG/BG（随用随取，不缓存）；
 // 提交时读不到所选颜色则中止并说明原因。扩展颜色只影响新增的画布区域
 // （且只对有背景层的文档生效，这是 PS 本身的行为），缩小画布时用不到它。
 const EXT_OPTIONS = ["foreground", "background", "white", "black", "gray", "other"];
@@ -452,30 +462,6 @@ async function openCanvasColorPicker() {
     colorDialogOpen = false;
     if (extPickerApi) extPickerApi.set(canvasExtension);
   }
-}
-
-function unitToPixels(value, unit, ppi) {
-  if (unit === "px") return value;
-  if (unit === "in") return value * ppi;
-  if (unit === "cm") return value * ppi / 2.54;
-  if (unit === "mm") return value * ppi / 25.4;
-  if (unit === "pt") return value * ppi / 72;
-  return value * ppi / 6;
-}
-
-function pixelsToUnit(px, unit, ppi) {
-  if (unit === "px") return px;
-  if (unit === "in") return px / ppi;
-  if (unit === "cm") return px * 2.54 / ppi;
-  if (unit === "mm") return px * 25.4 / ppi;
-  if (unit === "pt") return px * 72 / ppi;
-  return px * 6 / ppi;
-}
-
-// 显示格式：像素取整，其它单位保留两位小数（和 PS 一致）。
-function formatUnitValue(px, unit, ppi) {
-  const v = pixelsToUnit(px, unit, ppi);
-  return unit === "px" ? String(Math.round(v)) : String(Number(v.toFixed(2)));
 }
 
 /* ---------- 自绘单位下拉 ---------- */
@@ -562,12 +548,12 @@ function buildOptionPicker(pickerId, options, labelOf, onChange, dividerBefore) 
 // 编辑保护：轮询 refresh() 每 1.2 秒跑一次，会把数值框重写成文档当前值。
 // 真机上用户敲的数字就是这样被冲掉的（「输一个马上还原」就是它）。
 // 规则：聚焦中的框不回写；用户编辑过（dirty）的框，在文档真的变化
-// （撤销 / 确认修改成功，两种都会让快照签名变化）之前也不回写。
+// （撤销 / 修改成功，两种都会让快照签名变化）之前也不回写。
 const sizeDirty = {};
 let sizeFocus = null;
 // 锁定比例时「以谁为准」：最后编辑的是宽还是高（v1.9.8 修复）。
 // 之前永远保留宽、按比例重算高 —— 用户只改高度时会被拉回原比例，
-// 请求尺寸 = 原尺寸，PS 无事可做，表现就是「点确认修改不动、数值弹回去」。
+// 请求尺寸 = 原尺寸，PS 无事可做，表现就是「点修改不动、数值弹回去」。
 let sizeLastEdited = null;
 
 function readSizeValue(field) {
@@ -586,6 +572,7 @@ function onSizeKeydown(field, event) {
   if (key === "Escape") {
     // Esc = 放弃这次编辑：清掉编辑标记、交还焦点，再让 refresh() 用文档当前值还原显示。
     event.preventDefault();
+    if (field.indexOf("image") === 0) { el(field).blur(); restoreImageSize(); return; }
     sizeDirty[field] = false;
     if (sizeFocus === field) sizeFocus = null;
     el(field).blur();
@@ -606,8 +593,10 @@ function renderImageLock() {
 }
 
 function toggleImageLock() {
+  if (service.busy) return;
   imageLock = !imageLock;
   renderImageLock();
+  syncImageDraft(sizeLastEdited);
   status(imageLock ? "已锁定：改宽/高时另一边按当前比例自动调整。" : "已解锁：宽与高分别设置。");
 }
 
@@ -683,6 +672,42 @@ function selectAnchor(id) {
   status("画布锚点已选：" + ANCHOR_LABEL[id] + "。");
 }
 
+function imageDocumentState(doc) {
+  return doc ? { ...canvasDocumentState(doc), mode: host.getMode(doc), bitDepth: host.getBitDepth(doc) } : null;
+}
+
+function sameImageDocument(a, b) {
+  return sameCanvasDocument(a, b) && a.mode === b.mode && a.bitDepth === b.bitDepth;
+}
+
+function readImageTarget() {
+  return imageTarget({ width: readSizeValue("imageWidth"), height: readSizeValue("imageHeight"),
+    resolution: readSizeValue("imageResolution"), unit: imageUnit, locked: imageLock,
+    lastEdited: sizeLastEdited }, lastImageSnapshot);
+}
+
+function syncImageDraft(field) {
+  if (imageLock && (field === "imageWidth" || field === "imageHeight")) {
+    const target = readImageTarget();
+    if (target) {
+      const other = field === "imageWidth" ? "imageHeight" : "imageWidth";
+      writeSizeValue(other, formatUnitValue(field === "imageWidth" ? target.height : target.width, imageUnit, target.resolution));
+      sizeDirty[other] = true;
+    }
+  }
+  renderImageSizeSummary();
+}
+
+function renderImageSizeSummary() {
+  const target = readImageTarget();
+  const base = lastImageSnapshot;
+  if (!base) { el("imageSizeSummary").textContent = "图像大小：—"; return; }
+  const original = imageBytes(base.width, base.height, base.mode, base.bitDepth);
+  const estimate = target ? imageBytes(target.width, target.height, base.mode, base.bitDepth) : null;
+  el("imageSizeSummary").textContent = "图像大小：" + formatBytes(estimate)
+    + (estimate === original && estimate !== null ? "" : "（之前为 " + formatBytes(original) + "）");
+}
+
 /* ---------- 执行（图片大小 / 画布大小） ---------- */
 
 // UXP 的 sp-textfield 是黑盒组件：真机上 keydown 的 preventDefault **拦不住**
@@ -719,26 +744,19 @@ async function applyImageSize() {
   if (service.busy) return;
   const doc = host.active();
   if (!doc) { status("当前没有打开的文档。", true); return; }
-  const widthValue = parsePositive(readSizeValue("imageWidth"));
-  const heightValue = parsePositive(readSizeValue("imageHeight"));
-  const resolution = parsePositive(readSizeValue("imageResolution"));
-  if (widthValue == null || heightValue == null || resolution == null) {
-    status("图片大小的宽、高、分辨率都必须是大于 0 的数字。", true);
+  if (!sameImageDocument(imageDocumentState(doc), lastImageSnapshot)) {
+    refresh(false);
+    status("文档或尺寸已变化，请检查刷新后的数值再修改。", true);
     return;
   }
-  // 输入值按当前单位换算成像素（宽/高共用一个单位下拉）。
-  let widthPx = Math.round(unitToPixels(widthValue, imageUnit, resolution));
-  let heightPx = Math.round(unitToPixels(heightValue, imageUnit, resolution));
-  if (imageLock && aspectRatio > 0) {
-    // 锁定比例 = 以**最后编辑的一边**为准联动另一边（和 PS 图像大小对话框一致）：
-    // 改高 → 宽按比例走；改宽（或没动过）→ 高按比例走。
-    if (sizeLastEdited === "imageHeight") {
-      widthPx = Math.round(heightPx * aspectRatio);
-      writeSizeValue("imageWidth", formatUnitValue(widthPx, imageUnit, resolution));
-    } else {
-      heightPx = Math.round(widthPx / aspectRatio);
-      writeSizeValue("imageHeight", formatUnitValue(heightPx, imageUnit, resolution));
-    }
+  const target = readImageTarget();
+  if (!target) { status("请输入有效的宽、高和分辨率；换算后的尺寸须为 1–300000 像素。", true); return; }
+  const source = { ...lastImageSnapshot };
+  const { width: widthPx, height: heightPx, resolution } = target;
+  if (widthPx === lastImageSnapshot.width && heightPx === lastImageSnapshot.height && resolution === lastImageSnapshot.resolution) {
+    restoreImageSize();
+    status("图片大小与当前文档一致。");
+    return;
   }
   service.busy = true;
   disableAll(true);
@@ -746,7 +764,12 @@ async function applyImageSize() {
   let failed = false;
   let message;
   try {
-    await host.modal(() => host.resizeImage(doc, widthPx, heightPx, resolution), "修改图片大小");
+    await host.modal(async () => {
+      if (!sameImageDocument(imageDocumentState(host.active()), source)) {
+        throw new Error("文档或尺寸已变化，请检查刷新后的数值再修改。");
+      }
+      await host.resizeImage(doc, widthPx, heightPx, resolution);
+    }, "修改图片大小");
     message = "图片大小已修改为 " + widthPx + " × " + heightPx + " 像素（按" + UNIT_NAMES[imageUnit] + "输入）· " + resolution + " PPI。";
   } catch (error) {
     console.error(error);
@@ -852,7 +875,7 @@ function restoreCanvasSize() {
   status(lastCanvasSnapshot ? "画布数值已还原为文档当前值。" : "当前没有文档数值可以还原。", !lastCanvasSnapshot);
 }
 
-// 「还原」：填了数字还没点「确认修改」又想反悔时，把图片卡三个框恢复成文档当前实际值。
+// 「还原」：填了数字还没点「修改」又想反悔时，把图片卡三个框恢复成文档当前实际值。
 // 只重写显示，不碰文档；同时清掉这几个框的编辑标记，让轮询刷新恢复正常回写。
 function restoreImageSize() {
   if (service.busy) return;
@@ -862,12 +885,13 @@ function restoreImageSize() {
   }
   writeSizeValue("imageWidth", formatUnitValue(lastDocWidth, imageUnit, lastResolution));
   writeSizeValue("imageHeight", formatUnitValue(lastDocHeight, imageUnit, lastResolution));
-  writeSizeValue("imageResolution", Math.round(lastResolution));
+  writeSizeValue("imageResolution", lastResolution);
   for (const field of ["imageWidth", "imageHeight", "imageResolution"]) {
     sizeDirty[field] = false;
   }
   sizeLastEdited = null;
   if (sizeFocus === "imageWidth" || sizeFocus === "imageHeight" || sizeFocus === "imageResolution") sizeFocus = null;
+  renderImageSizeSummary();
   status("已还原为文档当前数值。");
 }
 
@@ -897,6 +921,41 @@ async function changeDocMode(mode) {
     console.error(error);
     message = "颜色模式转换失败：" + errorText(error);
     failed = true;
+  } finally {
+    service.busy = false;
+    refresh(false);
+    status(message, failed);
+  }
+}
+
+async function quickExport(format) {
+  if (service.busy || colorDialogOpen) return;
+  const doc = host.active();
+  if (!doc) { status("当前没有打开的文档。", true); return; }
+  service.busy = true;
+  disableAll(true);
+  let message = "已取消导出。", failed = false;
+  try {
+    if (format === "png") {
+      status("正在调用 Photoshop 快速导出为 PNG…");
+      await exportQuickPNG(ps, doc);
+      message = "已调用 Photoshop 快速导出为 PNG。";
+      return;
+    }
+    const name = String(doc.name || "未标题").replace(/\.(psd|psb|jpe?g|png|tiff?|webp|gif|bmp|pdf)$/i, "").replace(/[\\/:*?"<>|]/g, "_");
+    const file = await storage.localFileSystem.getFileForSaving(name + "." + format, { types: [format] });
+    if (!file) return;
+    status("正在导出 " + format.toUpperCase() + "…");
+    await host.modal(context => exportDocument(ps, doc, format, file, context), "快速导出 " + format.toUpperCase());
+    message = "已导出 " + format.toUpperCase() + "：" + file.name + "。";
+  } catch (error) {
+    console.error(error);
+    if (error && (error.cancelled || error.code === "EXPORT_CANCELLED")) {
+      message = "已取消导出。";
+    } else {
+      message = "导出失败：" + errorText(error);
+      failed = true;
+    }
   } finally {
     service.busy = false;
     refresh(false);
@@ -952,6 +1011,8 @@ async function syncVisibility(id) {
     if (!service.busy && host.active() && host.active().id === id) {
       renderVisibility(visible);
     }
+    const locked = await host.guidesLocked();
+    if (!service.busy && host.active() && host.active().id === id) renderGuideLock(locked);
   } catch (error) { console.error(error); }
   finally { visibilityReading = false; }
 }
@@ -971,6 +1032,30 @@ async function toggleVisibility() {
   finally { service.busy = false; refresh(false); status(message, failed); }
 }
 
+function renderGuideLock(locked) {
+  el("guideLockIcon").src = locked ? "assets/icon-lock.png" : "assets/icon-unlock.png";
+  const label = locked ? "解锁辅助线" : "锁定辅助线";
+  el("guideLock").className = "guide-lock-button" + (locked ? " locked" : "");
+  el("guideLock").title = label;
+  el("guideLock").setAttribute("aria-label", label);
+  el("guideLock").setAttribute("aria-pressed", String(locked));
+}
+
+async function toggleGuideLock() {
+  if (service.busy) return;
+  const doc = host.active();
+  if (!doc) return;
+  service.busy = true;
+  disableAll(true);
+  let message, failed = false;
+  try {
+    const locked = await host.modal(() => host.toggleGuideLock(doc), "锁定或解锁辅助线");
+    renderGuideLock(locked);
+    message = locked ? "辅助线已锁定。" : "辅助线已解锁。";
+  } catch (error) { message = "切换锁定失败：" + errorText(error); failed = true; }
+  finally { service.busy = false; refresh(false); status(message, failed); }
+}
+
 /* ---------- 在线更新 ---------- */
 
 // 页脚只有两行空间，错误信息里那种超长 URL 会把整个页脚撑变形（真机实测过）。
@@ -984,15 +1069,6 @@ function tidyMessage(text) {
     const tail = segments.length ? segments[segments.length - 1] : "";
     return clean.slice(0, slash) + "/…/" + tail;
   });
-}
-
-// 检查更新失败（网络波动 / 防火墙拦截 GitHub / API 限流）：
-// 红色提示「更新失败，请手动下载更新。」+ 点亮页脚的「手动更新」链接
-//（打开 GitHub 发布页，README 里有最新版下载直链）。
-// v1.9.19 起更新消息统一走底部状态条，页脚只留操作入口（行内紧凑排列）。
-function showManualDownloadStatus() {
-  status("更新失败，请手动下载更新。", true);
-  showReleaseButton(true);
 }
 
 // 更新消息统一走底部状态条（v1.9.19）：之前写在页脚中段，把窄页脚挤得错位。
@@ -1042,63 +1118,15 @@ async function checkUpdate() {
       // 这条修了一个老 bug：之前无论有没有新版都无条件 showReleaseButton(true)，
       // 导致「已是最新版本」的状态文字和「打开发布页」按钮同屏出现，页脚显得错位。
       showReleaseButton(false);
-      setUpdateStatus("已是最新版本（v" + result.current + "）。");
+      setUpdateStatus(result.isAhead ? "本地 v" + result.current + "，线上最新 v" + result.latest + "。" : "已是最新版本（v" + result.current + "）。");
     }
   } catch (error) {
     console.error(error);
-    showManualDownloadStatus();
+    setUpdateStatus("检查更新失败：" + errorText(error) + "。可打开发布页手动下载。", true);
+    showReleaseButton(true);
   } finally {
     setDisabled("checkUpdate", false);
   }
-}
-
-// 一键修复插件目录写权限（v1.9.21 引入，v1.9.23 重写授权命令）：
-// 目录受系统保护（典型：装在 C:\Program Files 下）时，一键更新必然
-// 「operation not permitted」。这里生成两个脚本写进插件的数据目录（一定可写），
-// 并直接打开 repair.bat —— 用户只需在 UAC 授权弹窗点「是」：
-// v1.9.21 用的是 icacls 命令行，但 "$env:USERNAME:(OI)(CI)M" 这种写法在
-// PowerShell 里插值被拆坏（真机实锤：icacls 报「无效参数 "(OI)(CI)M"」，
-// 权限根本没授上，末尾还误报 Done）。v1.9.23 改用 Windows 原生 .NET 授权
-// 接口（FileSystemAccessRule，等价于 M:(OI)(CI) 但没有命令行参数解析坑），
-// 授完再做一次**真实写入自检**：成功显示 SUCCESS、失败显示 FAILED
-// （并提示转手动更新），绝不再盲目报成功。
-async function repairInstallPermission(targetFolder) {
-  const nativePath = (targetFolder && targetFolder.nativePath) || "";
-  if (!nativePath) throw new Error("拿不到插件目录的本地路径。");
-  // repair.ps1 带 BOM（\uFEFF），PowerShell 5.1 才能正确读里面的中文路径。
-  const ps1 = [
-    "# Auto-generated by the plugin. Repair write permission for the plugin folder.",
-    "$ErrorActionPreference = 'Stop'",
-    "$target = '" + nativePath.replace(/'/g, "''") + "'",
-    "try {",
-    "  $id = [System.Security.Principal.WindowsIdentity]::GetCurrent()",
-    "  $rule = New-Object System.Security.AccessControl.FileSystemAccessRule($id.User, 'Modify', 'ContainerInherit,ObjectInherit', 'None', 'Allow')",
-    "  $acl = [System.IO.Directory]::GetAccessControl($target)",
-    "  $acl.SetAccessRule($rule)",
-    "  [System.IO.Directory]::SetAccessControl($target, $acl)",
-    "  # 授权后做一次真实写入自检，用实际结果说话。",
-    "  $probe = Join-Path $target '__perm_test.tmp'",
-    "  [System.IO.File]::WriteAllText($probe, 'ok')",
-    "  [System.IO.File]::Delete($probe)",
-    "  Write-Host ''",
-    "  Write-Host 'SUCCESS! Back in Photoshop: click Check Update -> Download and Install Update again.' -ForegroundColor Green",
-    "} catch {",
-    "  Write-Host ''",
-    "  Write-Host 'FAILED:' $_.Exception.Message -ForegroundColor Red",
-    "  Write-Host 'Please use manual update: click the Manual Update link in the plugin panel.'",
-    "}",
-    "Write-Host ''",
-    "Read-Host 'Press Enter to close'"
-  ].join("\r\n");
-  const bat = [
-    "@echo off",
-    "cd /d \"%~dp0\"",
-    "powershell -NoProfile -Command \"Start-Process powershell -Verb RunAs -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File','\\\"%~dp0repair.ps1\\\"')\"",
-    ""
-  ].join("\r\n");
-  await update.writeDataFile("repair.ps1", "\uFEFF" + ps1);
-  const batEntry = await update.writeDataFile("repair.bat", bat);
-  await shell.openPath(batEntry.nativePath);
 }
 
 async function installUpdate() {
@@ -1109,7 +1137,7 @@ async function installUpdate() {
   try {
     target = await update.resolveTarget();
     if (!target) {
-      setUpdateStatus("请在弹窗中选择插件所在的文件夹（Photoshop 的 Plug-ins 里的「品牌版式标准规范PS插件-" + VERSION + "」）。");
+      setUpdateStatus("请选择已安装插件的根文件夹（包含 manifest.json 的文件夹）。");
       target = await update.chooseTarget();
       if (!target) { setUpdateStatus("已取消选择，更新未执行。"); return; }
     }
@@ -1124,18 +1152,6 @@ async function installUpdate() {
   } catch (error) {
     console.error(error);
     const text = errorText(error);
-    // 目录不可写（常见于 C:\Program Files 下，系统只读）→ 一键修复：
-    // 自动生成授权脚本并打开，用户在 UAC 弹窗点「是」即可，然后重新走一次更新。
-    // 修复失败（或用户拒绝了授权）才退回「手动更新」。
-    if (target && /not permitted|denied|EACCES|EPERM|权限/i.test(text)) {
-      try {
-        await repairInstallPermission(target);
-        setUpdateStatus("已打开一键修复脚本：在弹出的授权窗口点「是」，窗口显示 SUCCESS（绿色）后，再点一次「检查更新 → 下载并安装更新」；若显示 FAILED（红色），就用「手动更新」。");
-        return;
-      } catch (repairError) {
-        console.error("修复权限失败:", repairError);
-      }
-    }
     setUpdateStatus("更新失败：" + text + " 可点「手动更新」下载覆盖。", true);
     showReleaseButton(true);
   } finally {
@@ -1148,7 +1164,7 @@ async function installUpdate() {
 
 function start() {
   if (!initialized) {
-    // 版本号只出现在标题后面。页脚那个 #versionText 已删掉，避免同一个号显示两遍。
+    // 页脚统一显示当前运行版本。
     // 版本号带 v 前缀显示（用户要求：v1.9 这种格式）。
     el("footerVersion").textContent = "v" + VERSION;
     // 初始不留提示文字：页脚只有点「检查更新」时才展开这一行。
@@ -1179,7 +1195,7 @@ function start() {
       bindAction(el("step-down-" + field), () => stepBleed(field, -1));
     }
     for (const id of MODE_BUTTONS) el(id).addEventListener("click", () => { void run(id); });
-    // 图片大小 / 画布大小：自绘数值框 + 锁链 + 锚点 + 确认修改
+    // 图片大小 / 画布大小：自绘数值框 + 锁链 + 锚点 + 修改
     renderImageLock();
     try { buildAnchorGrid(); } catch (error) { console.error("锚点初始化失败:", error); }
     bindAction(el("imageLock"), toggleImageLock);
@@ -1187,7 +1203,7 @@ function start() {
       const valueEl = el(field);
       valueEl.addEventListener("keydown", event => onSizeKeydown(field, event));
       // 用户真的输入过 = dirty：失焦后轮询也不能冲掉输入（v1.9.6 换真输入框时丢了这条，
-      // 只有聚焦保护在撑着 —— 点「确认修改」慢一步输入就被刷新回写）。
+      // 只有聚焦保护在撑着 —— 点「修改」慢一步输入就被刷新回写）。
       // 宽/高另记 sizeLastEdited，锁定比例时按它决定联动方向。
       valueEl.addEventListener("input", () => {
         // 真机上 keydown 拦不住字母（见 sanitizeNumberText 注释），输入时洗一遍。
@@ -1195,16 +1211,18 @@ function start() {
         if (cleaned !== valueEl.value) valueEl.value = cleaned;
         sizeDirty[field] = true;
         if (field === "imageWidth" || field === "imageHeight") sizeLastEdited = field;
+        if (field.indexOf("image") === 0) syncImageDraft(sizeLastEdited);
       });
       // 焦点跟踪给 refresh() 的编辑保护用：聚焦中的框不能被轮询回写。
       valueEl.addEventListener("focus", () => { sizeFocus = field; });
       valueEl.addEventListener("blur", () => { if (sizeFocus === field) sizeFocus = null; });
-      // 输入框不直接改状态：失焦/回车只把焦点移走，真正的修改走「确认修改」按钮。
-      valueEl.setAttribute("title", "直接输入数字，双击可全选，点「确认修改」生效");
+      // 输入框不直接改状态：失焦/回车只把焦点移走，真正的修改走「修改」按钮。
+      valueEl.setAttribute("title", "直接输入数字，双击可全选，点「修改」生效");
     }
     // 自绘单位下拉：一张卡一个，控制宽/高两行。选中后以文档为准重写换算值。
     buildUnitPicker("imageUnitPicker", function (unit) {
       imageUnit = unit;
+      lastImageSnapshot = null;
       el("imageUnitText").textContent = UNIT_NAMES[unit] || "像素";
       lastSignature = null;   // 单位切换后以文档为准重写换算值
       refresh(false);
@@ -1242,7 +1260,7 @@ function start() {
       fieldEl.style.opacity = "0.45";
     }
     el("applyImageSize").addEventListener("click", () => { void applyImageSize(); });
-    el("applyImageSize").title = "按当前值修改图片大小（executeAsModal 包成一步）";
+    el("applyImageSize").title = "按当前值修改图片大小";
     bindAction(el("restoreImageSize"), restoreImageSize);
     el("restoreImageSize").title = "放弃当前输入，恢复为文档的实际数值";
     bindAction(el("restoreCanvasSize"), restoreCanvasSize);
@@ -1250,12 +1268,15 @@ function start() {
     // 颜色模式芯片：点击把文档转换成对应模式。
     bindAction(el("modeRGB"), () => { void changeDocMode("RGB"); });
     bindAction(el("modeCMYK"), () => { void changeDocMode("CMYK"); });
+    bindAction(el("exportJPG"), () => { void quickExport("jpg"); });
+    bindAction(el("exportPNG"), () => { void quickExport("png"); });
     el("applyCanvasSize").addEventListener("click", () => { void applyCanvasSize(); });
-    el("applyCanvasSize").title = "按当前值修改画布大小（executeAsModal 包成一步）";
+    el("applyCanvasSize").title = "按当前值修改画布大小";
     el("clear").addEventListener("click", () => { void run("clear"); });
     el("clear").title = "删除当前文档的全部辅助线（含手动添加）";
     el("visibility").addEventListener("click", () => { void toggleVisibility(); });
     el("visibility").title = "隐藏辅助线";
+    el("guideLock").addEventListener("click", () => { void toggleGuideLock(); });
     el("checkUpdate").addEventListener("click", () => { void checkUpdate(); });
     el("installUpdate").addEventListener("click", () => { void installUpdate(); });
     bindAction(el("openRelease"), () => { void openRelease(); });

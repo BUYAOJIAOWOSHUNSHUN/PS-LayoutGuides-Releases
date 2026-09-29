@@ -1,18 +1,16 @@
 "use strict";
 
-// 在线更新：检查 GitHub 版本 → 按文件拉取 → 覆盖到插件目录。
-// 不走 zip，因为 UXP 没有内置解压能力；改为用 GitHub 的 tree 接口列出文件，
-// 再逐个从 raw 地址下载覆盖，逻辑更简单，失败也能定位到具体文件。
+// 在线更新：检查 GitHub Release -> 按文件下载 -> 安全写入插件目录。
+// UXP 没有内置解压能力，因此继续使用 Git tree + raw 文件接口。
 
 const uxp = require("uxp");
 const fs = uxp.storage.localFileSystem;
 const TOKEN_FILE = "update-target.json";
+const PLUGIN_ID = "com.local.layout-guides";
+const REQUEST_TIMEOUT_MS = 15000;
 
-// 写二进制必须显式带 format，否则 UXP 按 UTF-8 处理，PNG 会被写坏。
+// 写二进制必须显式带 format，否则 UXP 会按 UTF-8 处理。
 const BINARY_FORMAT = (uxp.storage.formats && uxp.storage.formats.binary) || "binary";
-
-// 这些后缀必须按二进制下载与写入。assets 里的图标和品牌图形都是 PNG，
-// 漏掉它们的话更新一次图片就全毁了（文件在、但打不开）。
 const BINARY_EXTENSIONS = [
   "png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "svg",
   "ttf", "otf", "woff", "woff2", "ccx", "zip"
@@ -21,8 +19,7 @@ const BINARY_EXTENSIONS = [
 function isBinary(path) {
   const name = path.split("/").pop();
   const dot = name.lastIndexOf(".");
-  if (dot < 0) return false;
-  return BINARY_EXTENSIONS.indexOf(name.slice(dot + 1).toLowerCase()) >= 0;
+  return dot >= 0 && BINARY_EXTENSIONS.indexOf(name.slice(dot + 1).toLowerCase()) >= 0;
 }
 
 function normalizeVersion(text) {
@@ -42,88 +39,364 @@ function compareVersions(a, b) {
   return 0;
 }
 
-async function apiGet(path) {
-  const response = await fetch("https://api.github.com/repos/" + path, {
-    headers: { "Accept": "application/vnd.github+json" }
+function networkError(error, action) {
+  const detail = error && error.message ? error.message : String(error || "未知网络错误");
+  return new Error(action + "失败：无法连接 GitHub（" + detail + "）。请检查网络或代理设置。");
+}
+
+function timeoutError(action) {
+  const error = new Error(action + "超时（15 秒内未完成）。请检查网络或代理设置后重试。");
+  error.code = "UPDATE_REQUEST_TIMEOUT";
+  return error;
+}
+
+// 一个总时限同时覆盖 fetch 和响应体读取；不依赖 AbortController。
+async function request(url, options, action, consume) {
+  let timer;
+  const timeout = new Promise((resolve, reject) => {
+    timer = setTimeout(() => reject(timeoutError(action)), REQUEST_TIMEOUT_MS);
   });
-  if (!response.ok) {
-    if (response.status === 404) {
-      throw new Error("仓库或发布不存在（404）。请核对仓库地址；私有仓库需要先设为公开，或改用其它分发方式。");
-    }
-    if (response.status === 403) {
-      throw new Error("GitHub 拒绝了请求（403），可能是访问频率超限，稍后再试。");
-    }
-    throw new Error("GitHub 返回 " + response.status + " " + (response.statusText || "") + "。");
+  const wait = promise => Promise.race([Promise.resolve(promise), timeout]);
+  let response;
+  try { response = await wait(fetch(url, options)); }
+  catch (error) {
+    clearTimeout(timer);
+    if (error && error.code === "UPDATE_REQUEST_TIMEOUT") throw error;
+    throw networkError(error, action);
   }
-  return await response.json();
+  try { return await consume(response, wait); }
+  finally { clearTimeout(timer); }
+}
+
+async function apiGet(path) {
+  return request("https://api.github.com/repos/" + path, {
+    headers: { "Accept": "application/vnd.github+json" }
+  }, "请求 GitHub API", async (response, wait) => {
+  if (!response.ok) {
+    const error = new Error(response.status === 403
+      ? "GitHub 拒绝了请求（403），可能是访问频率超限，稍后再试。"
+      : "GitHub API 请求失败（" + response.status + " " + (response.statusText || "") + "）：" + path);
+    error.status = response.status;
+    throw error;
+  }
+  try { return await wait(response.json()); }
+  catch (error) {
+    if (error && error.code === "UPDATE_REQUEST_TIMEOUT") throw error;
+    throw new Error("GitHub API 返回了无法解析的数据：" + path);
+  }
+  });
 }
 
 async function fetchLatestRelease(repo) {
   const data = await apiGet(repo + "/releases/latest");
-  const tag = data.tag_name || data.name || "";
+  const ref = data.tag_name || "";
+  if (!ref) throw new Error("GitHub 最新 Release 没有 tag_name，无法确定更新版本。");
   return {
-    version: normalizeVersion(tag),
-    ref: tag,
+    ref,
     notes: data.body || "",
     page: data.html_url || ("https://github.com/" + repo + "/releases")
   };
 }
 
+function safeRelativePath(path) {
+  if (typeof path !== "string" || !path || path.charAt(0) === "/" || path.indexOf("\\") >= 0) return false;
+  const segments = path.split("/");
+  for (const segment of segments) {
+    if (!segment || segment === "." || segment === ".." || segment.indexOf(":") >= 0) return false;
+  }
+  return true;
+}
+
 async function listFiles(repo, ref, subdir) {
   const data = await apiGet(repo + "/git/trees/" + encodeURIComponent(ref) + "?recursive=1");
+  if (data.truncated) throw new Error("GitHub 返回的文件清单不完整，已中止更新。");
   const prefix = subdir ? subdir.replace(/\/+$/, "") + "/" : "";
-  return (data.tree || [])
-    .filter(node => node.type === "blob")
+  const files = (data.tree || [])
+    .filter(node => node.type === "blob" && typeof node.path === "string")
     .map(node => node.path)
     .filter(path => !prefix || path.indexOf(prefix) === 0)
     .map(path => path.slice(prefix.length))
-    .filter(path => path && path.indexOf(".") !== 0)
-    .filter(path => path.indexOf("node_modules/") !== 0);
+    .filter(path => path && path.indexOf(".") !== 0 && path.split("/").indexOf("node_modules") < 0);
+  for (const path of files) {
+    if (!safeRelativePath(path)) throw new Error("更新文件路径不安全，已中止：" + path);
+  }
+  return files.sort((a, b) => {
+    if (a === "manifest.json") return 1;
+    if (b === "manifest.json") return -1;
+    return a < b ? -1 : (a > b ? 1 : 0);
+  });
 }
 
-// 按文件类型选读法：文本走 text()，图片等走 arrayBuffer()。
-async function downloadFile(repo, ref, fullPath) {
-  const response = await fetch("https://raw.githubusercontent.com/" + repo + "/" + ref + "/" + fullPath);
-  if (!response.ok) throw new Error("下载 " + fullPath + " 失败（" + response.status + "）。");
-  if (isBinary(fullPath)) return { binary: true, data: await response.arrayBuffer() };
-  return { binary: false, data: await response.text() };
+function contentsUrl(repo, ref, fullPath) {
+  const encodedPath = fullPath.split("/").map(encodeURIComponent).join("/");
+  return "https://api.github.com/repos/" + repo + "/contents/" + encodedPath + "?ref=" + encodeURIComponent(ref);
 }
 
-// 直接读仓库里的 manifest.json 取版本号，比依赖 Release 的 tag 更可靠。
-async function remoteVersion(repo, ref, subdir) {
-  const path = (subdir ? subdir.replace(/\/+$/, "") + "/" : "") + "manifest.json";
-  const response = await fetch("https://raw.githubusercontent.com/" + repo + "/" + ref + "/" + path);
-  if (!response.ok) throw new Error("无法读取仓库里的 manifest.json（" + response.status + "）。请核对 REPO 和 SUBDIR。");
+async function readResponseFile(response, wait, fullPath, source) {
+  if (!response.ok) throw new Error(source + "下载 " + fullPath + " 失败（HTTP " + response.status + "）。");
+  if (isBinary(fullPath)) return { binary: true, data: await wait(response.arrayBuffer()) };
+  return { binary: false, data: await wait(response.text()) };
+}
+
+async function downloadRawFile(repo, ref, fullPath) {
+  const url = "https://raw.githubusercontent.com/" + repo + "/" + ref + "/" + fullPath;
+  return request(url, null, "下载 " + fullPath,
+    (response, wait) => readResponseFile(response, wait, fullPath, "raw 域"));
+}
+
+async function downloadContentsFile(repo, ref, fullPath) {
+  return request(contentsUrl(repo, ref, fullPath), {
+    headers: { "Accept": "application/vnd.github.raw+json" }
+  }, "通过 GitHub Contents API 下载 " + fullPath,
+  (response, wait) => readResponseFile(response, wait, fullPath, "GitHub Contents API"));
+}
+
+async function downloadFile(repo, ref, fullPath, useContentsApi) {
+  if (useContentsApi) return downloadContentsFile(repo, ref, fullPath);
+  return downloadRawFile(repo, ref, fullPath);
+}
+
+function parseManifest(text, description) {
   let data;
-  try { data = JSON.parse(await response.text()); }
-  catch (_) { throw new Error("仓库里的 manifest.json 不是合法 JSON。"); }
-  if (!data.version) throw new Error("仓库里的 manifest.json 缺少 version 字段。");
-  return String(data.version);
+  try { data = JSON.parse(text); }
+  catch (_) { throw new Error(description + "不是合法 JSON。"); }
+  if (!data || typeof data !== "object") throw new Error(description + "内容无效。");
+  if (data.id !== PLUGIN_ID) throw new Error(description + "的插件 ID 不匹配（预期 " + PLUGIN_ID + "）。");
+  if (!data.version || !/^\d+(?:\.\d+){0,3}(?:-[0-9A-Za-z.-]+)?$/.test(normalizeVersion(data.version))) {
+    throw new Error(description + "缺少有效的 version 字段。");
+  }
+  return data;
 }
 
-async function ensureFolder(root, segments) {
+// 直接读取 Release tag 对应的 manifest；Release tag 才是更新来源。
+async function remoteManifest(repo, ref, subdir) {
+  const path = (subdir ? subdir.replace(/\/+$/, "") + "/" : "") + "manifest.json";
+  let content;
+  try { content = await downloadContentsFile(repo, ref, path); }
+  catch (apiError) {
+    try { content = await downloadRawFile(repo, ref, path); }
+    catch (rawError) {
+      throw new Error("无法读取仓库里的 manifest.json。GitHub Contents API：" + apiError.message + "；raw 备用读取：" + rawError.message + "。请核对 REPO、Release tag 和 SUBDIR。");
+    }
+  }
+  return parseManifest(content.data, "仓库里的 manifest.json");
+}
+
+async function check(repo, currentVersion, refOverride, subdir) {
+  if (!repo) throw new Error("尚未配置更新仓库：请在本插件的 src/update-config.js 里填写 REPO。");
+  let ref = refOverride || "";
+  let page = "https://github.com/" + repo + "/releases";
+  let notes = "";
+  if (!ref) {
+    try {
+      const release = await fetchLatestRelease(repo);
+      ref = release.ref;
+      page = release.page;
+      notes = release.notes;
+    } catch (error) {
+      if (error.status === 404) {
+        throw new Error("没有找到 GitHub 最新 Release（404）。请核对仓库地址，或先发布一个正式 Release。");
+      }
+      throw error;
+    }
+  }
+  if (!ref) throw new Error("无法确定要拉取的版本，请检查 GitHub Release 设置。");
+  const current = normalizeVersion(currentVersion);
+  if (!/^\d+(?:\.\d+){0,3}(?:-[0-9A-Za-z.-]+)?$/.test(current)) {
+    throw new Error("当前插件版本号无效：" + (current || "（空）") + "。");
+  }
+  const manifest = await remoteManifest(repo, ref, subdir);
+  const latest = normalizeVersion(manifest.version);
+  const comparison = compareVersions(latest, current);
+  return {
+    current, latest, ref, notes, page,
+    hasUpdate: comparison > 0,
+    isCurrent: comparison === 0,
+    isAhead: comparison < 0
+  };
+}
+
+async function entryAt(root, path) {
+  let entry = root;
+  const segments = path.split("/");
+  for (let i = 0; i < segments.length; i++) {
+    if (!entry || !entry.isFolder) return null;
+    try { entry = await entry.getEntry(segments[i]); }
+    catch (_) { return null; }
+    if (i < segments.length - 1 && !entry.isFolder) {
+      throw new Error("目标目录中的路径结构不正确：" + path);
+    }
+  }
+  return entry;
+}
+
+async function readTargetManifest(folder) {
+  if (!folder || !folder.isFolder) throw new Error("所选项目录无效，请选择插件根目录。");
+  let entry;
+  try { entry = await folder.getEntry("manifest.json"); }
+  catch (_) { throw new Error("所选目录不是插件根目录（缺少 manifest.json）。请选中品牌版式标准规范 PS 插件本身。"); }
+  if (!entry || entry.isFolder) throw new Error("所选目录的 manifest.json 无效，请选中插件根目录。");
+  return parseManifest(await entry.read(), "所选目录的 manifest.json");
+}
+
+async function getFolder(root, segments, create, createdFolders) {
   let folder = root;
+  let path = "";
   for (const segment of segments) {
+    path = path ? path + "/" + segment : segment;
     let next = null;
     try { next = await folder.getEntry(segment); } catch (_) { next = null; }
-    folder = next && next.isFolder ? next : await folder.createFolder(segment);
+    if (next) {
+      if (!next.isFolder) throw new Error("目标目录中的路径结构不正确：" + path);
+      folder = next;
+    } else {
+      if (!create) return null;
+      folder = await folder.createFolder(segment);
+      createdFolders.push(path);
+    }
   }
   return folder;
 }
 
-async function writeInto(root, path, content) {
+async function writeFile(root, path, content, createdFolders) {
   const segments = path.split("/");
   const name = segments.pop();
-  const folder = segments.length ? await ensureFolder(root, segments) : root;
+  const folder = await getFolder(root, segments, true, createdFolders);
   const file = await folder.createFile(name, { overwrite: true });
-  if (content && content.binary) await file.write(content.data, { format: BINARY_FORMAT });
-  else await file.write(content ? content.data : content);
+  if (content.binary) await file.write(content.data, { format: BINARY_FORMAT });
+  else await file.write(content.data);
+}
+
+async function writeEntry(entry, content) {
+  if (content.binary) await entry.write(content.data, { format: BINARY_FORMAT });
+  else await entry.write(content.data);
+}
+
+async function cleanupCreatedFolders(root, paths) {
+  for (let i = paths.length - 1; i >= 0; i--) {
+    try {
+      const entry = await entryAt(root, paths[i]);
+      if (entry && entry.isFolder && (await entry.getEntries()).length === 0) await entry.delete();
+    } catch (_) { /* Best effort; the install error remains the primary error. */ }
+  }
+}
+
+async function rollback(root, attempted, backups, createdFolders) {
+  const errors = [];
+  for (let i = attempted.length - 1; i >= 0; i--) {
+    const path = attempted[i];
+    try {
+      const backup = backups[path];
+      if (backup.exists) {
+        await writeFile(root, path, backup.content, []);
+      } else {
+        const entry = await entryAt(root, path);
+        if (entry) await entry.delete();
+      }
+    } catch (error) { errors.push(path + "：" + (error && error.message ? error.message : String(error))); }
+  }
+  await cleanupCreatedFolders(root, createdFolders);
+  return errors;
+}
+
+// 下载和校验全部完成后才开始写目标目录。若写入失败，会按快照回滚已触及文件。
+async function install(repo, ref, subdir, targetFolder, onProgress) {
+  if (!targetFolder) throw new Error("尚未选择插件目录。");
+  const localManifest = await readTargetManifest(targetFolder);
+  const files = await listFiles(repo, ref, subdir);
+  if (!files.length) throw new Error("仓库里没有找到可更新的文件，请检查 SUBDIR 配置。");
+  if (files.indexOf("manifest.json") < 0) {
+    throw new Error("仓库里没有找到 manifest.json，SUBDIR 可能填错了。为避免覆盖错误目录，已中止。");
+  }
+
+  const staged = [];
+  let index = 0;
+  let useContentsApi = false;
+  for (const path of files) {
+    index++;
+    if (onProgress) onProgress(index, files.length, path);
+    const fullPath = (subdir ? subdir.replace(/\/+$/, "") + "/" : "") + path;
+    let content;
+    if (useContentsApi) {
+      content = await downloadFile(repo, ref, fullPath, true);
+    } else {
+      try { content = await downloadFile(repo, ref, fullPath, false); }
+      catch (rawError) {
+        useContentsApi = true;
+        try { content = await downloadFile(repo, ref, fullPath, true); }
+        catch (apiError) {
+          throw new Error("下载 " + fullPath + " 失败。raw 域：" + rawError.message + "；GitHub Contents API：" + apiError.message);
+        }
+      }
+    }
+    staged.push({ path, content });
+  }
+
+  const remoteItem = staged.find(item => item.path === "manifest.json");
+  const remote = parseManifest(remoteItem.content.data, "下载的 manifest.json");
+  if (compareVersions(remote.version, localManifest.version) <= 0) {
+    throw new Error("下载版本 v" + normalizeVersion(remote.version) + " 不高于已安装版本 v" + normalizeVersion(localManifest.version) + "，已中止以避免降级。");
+  }
+
+  // 在插件数据目录保留可恢复的原件；即使回滚遇到磁盘/权限错误，也不会丢掉恢复材料。
+  const dataFolder = await fs.getDataFolder();
+  const recoveryName = "layout-guides-update-recovery-" + Date.now() + "-" + Math.floor(Math.random() * 1000000);
+  let recoveryFolder;
+  try { recoveryFolder = await dataFolder.createFolder(recoveryName); }
+  catch (error) {
+    throw new Error("无法在插件数据目录建立临时恢复备份（" + (error && error.message ? error.message : String(error)) + "），插件文件尚未修改。");
+  }
+
+  // 先为所有受影响文件制作内存快照和磁盘备份。失败时尚未改写插件。
+  const backups = Object.create(null);
+  try {
+    for (const item of staged) {
+      const entry = await entryAt(targetFolder, item.path);
+      if (entry && entry.isFolder) throw new Error("目标目录中文件位置被同名文件夹占用：" + item.path);
+      if (entry) {
+        const binary = isBinary(item.path);
+        const content = { binary, data: await entry.read(binary ? { format: BINARY_FORMAT } : undefined) };
+        backups[item.path] = { exists: true, content };
+        await writeFile(recoveryFolder, item.path, content, []);
+      } else {
+        backups[item.path] = { exists: false, content: null };
+      }
+    }
+    const info = await recoveryFolder.createFile("recovery-info.json", { overwrite: true });
+    await info.write(JSON.stringify({ pluginId: PLUGIN_ID, oldVersion: localManifest.version, newVersion: remote.version,
+      files: staged.map(item => ({ path: item.path, existed: backups[item.path].exists, binary: isBinary(item.path) })) }, null, 2));
+  } catch (error) {
+    try { await recoveryFolder.delete(); } catch (_) { /* No target file has changed. */ }
+    throw new Error("无法为更新制作完整恢复备份（" + (error && error.message ? error.message : String(error)) + "），插件文件尚未修改。");
+  }
+
+  const attempted = [];
+  const createdFolders = [];
+  try {
+    for (const item of staged) {
+      attempted.push(item.path);
+      await writeFile(targetFolder, item.path, item.content, createdFolders);
+    }
+  } catch (error) {
+    const rollbackErrors = await rollback(targetFolder, attempted, backups, createdFolders);
+    const detail = error && error.message ? error.message : String(error);
+    if (rollbackErrors.length) {
+      const recoveryPath = recoveryFolder.nativePath || recoveryFolder.name || recoveryName;
+      throw new Error("更新写入失败（" + detail + "）；自动恢复也有失败项：" + rollbackErrors.join("；") + "。原文件备份保存在插件数据目录：" + recoveryPath + "。请从该目录恢复文件或手动重新安装完整版本。");
+    }
+    try { await recoveryFolder.delete(); }
+    catch (_) {
+      const recoveryPath = recoveryFolder.nativePath || recoveryFolder.name || recoveryName;
+      throw new Error("更新写入失败（" + detail + "）；已恢复本次改动，插件文件保持原版本。临时恢复备份清理失败，位置：" + recoveryPath);
+    }
+    throw new Error("更新写入失败（" + detail + "）；已恢复本次改动，插件文件保持原版本。");
+  }
+  try { await recoveryFolder.delete(); } catch (_) { /* A leftover recovery copy does not affect the installed version. */ }
+  return staged.length;
 }
 
 /* ---------- 目标目录（记住用户选过一次的位置） ---------- */
 
-// 把文本写进插件的数据目录（那里一定可写）。一键修复权限的脚本就写在这里。
-// 返回写入的文件 Entry（nativePath 可交给 shell.openPath 打开）。
 async function writeDataFile(name, text) {
   const folder = await fs.getDataFolder();
   const file = await folder.createFile(name, { overwrite: true });
@@ -143,68 +416,21 @@ async function readToken() {
 async function resolveTarget() {
   const token = await readToken();
   if (!token) return null;
-  try { return await fs.getEntryForPersistentToken(token); } catch (_) { return null; }
+  try {
+    const folder = await fs.getEntryForPersistentToken(token);
+    await readTargetManifest(folder);
+    return folder;
+  } catch (_) { return null; }
 }
 
 async function chooseTarget() {
   const folder = await fs.getFolder();
   if (!folder) return null;
+  await readTargetManifest(folder);
   const folder2 = await fs.getDataFolder();
   const entry = await folder2.createFile(TOKEN_FILE, { overwrite: true });
   await entry.write(JSON.stringify({ token: await fs.createPersistentToken(folder) }));
   return folder;
-}
-
-/* ---------- 对外接口 ---------- */
-
-// 检查是否有新版本。repo 为空时抛出可读的提示。
-// refOverride 为空时跟随 GitHub 最新 Release；仓库没有 Release 时自动退回默认分支（HEAD）。
-async function check(repo, currentVersion, refOverride, subdir) {
-  if (!repo) throw new Error("尚未配置更新仓库：请在本插件的 src/update-config.js 里填写 REPO。");
-  let ref = refOverride || "";
-  let page = "https://github.com/" + repo + "/releases";
-  let notes = "";
-  if (!ref) {
-    try {
-      const release = await fetchLatestRelease(repo);
-      ref = release.ref;
-      page = release.page;
-      notes = release.notes;
-    } catch (error) {
-      if (error.message.indexOf("404") < 0) throw error;
-      // 没有发布 Release 的仓库，直接按默认分支最新提交更新。
-      ref = "HEAD";
-      page = "https://github.com/" + repo;
-    }
-  }
-  if (!ref) throw new Error("无法确定要拉取的版本，请检查 GitHub 仓库的 Release 设置。");
-  const latest = await remoteVersion(repo, ref, subdir);
-  return {
-    current: normalizeVersion(currentVersion),
-    latest: normalizeVersion(latest),
-    ref,
-    notes,
-    page,
-    hasUpdate: compareVersions(latest, currentVersion) > 0
-  };
-}
-
-// 下载并覆盖到目标目录。返回写入的文件数。
-async function install(repo, ref, subdir, targetFolder, onProgress) {
-  if (!targetFolder) throw new Error("尚未选择插件目录。");
-  const files = await listFiles(repo, ref, subdir);
-  if (!files.length) throw new Error("仓库里没有找到可更新的文件，请检查 SUBDIR 配置。");
-  if (files.indexOf("manifest.json") < 0) {
-    throw new Error("仓库里没有找到 manifest.json，SUBDIR 可能填错了。为避免覆盖错误目录，已中止。");
-  }
-  let index = 0;
-  for (const path of files) {
-    index++;
-    if (onProgress) onProgress(index, files.length, path);
-    const content = await downloadFile(repo, ref, subdir ? subdir.replace(/\/+$/, "") + "/" + path : path);
-    await writeInto(targetFolder, path, content);
-  }
-  return files.length;
 }
 
 module.exports = {

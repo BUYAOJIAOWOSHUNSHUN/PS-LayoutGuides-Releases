@@ -49,6 +49,15 @@ html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
 .mode-switch { display: flex; flex-direction: row; border: 1px solid #545454; border-radius: 4px; overflow: hidden; flex-shrink: 0; margin-left: 10px; }
 .mode-option { padding: 3px 7px; font-size: 10px; color: #a2a2a2; cursor: pointer; }
 .mode-option.active { background: #1473e6; color: #ffffff; }
+.document-actions { display: flex; flex-direction: column; flex-shrink: 0; width: 110px; margin-left: 10px; }
+.document-action-row { display: flex; flex-direction: row; align-items: center; }
+.document-action-label { width: 20px; margin-right: 6px; flex-shrink: 0; font-size: 10px; color: #a2a2a2; }
+.document-actions .mode-switch { width: 84px; box-sizing: border-box; margin-left: 0; }
+.document-actions .mode-option { flex: 1; text-align: center; min-width: 0; padding: 3px 4px; }
+.export-row { margin-top: 5px; }
+.export-divider { width: 1px; height: 12px; flex-shrink: 0; align-self: center; background: #545454; }
+.export-switch .mode-option:hover { background: #3b4c60; color: #ffffff; }
+.mode-option[disabled] { opacity: 0.45; cursor: default; }
 .document-name { font-size: 13px; font-weight: 600; line-height: 19px; overflow-wrap: break-word; }
 .muted, small { display: block; color: #a2a2a2; font-size: 11px; line-height: 17px; margin-top: 3px; overflow-wrap: break-word; }
 /* 页面高度由内容自然决定（min-height 会把内容少的屏幕页下方撑出一大段空白）。 */
@@ -213,7 +222,7 @@ sp-button.guide-button.sub-guide:nth-child(2) { margin-right: 8px; }
 sp-button.compact-button { width: 96px; min-width: 96px; height: 30px; min-height: 30px; margin: 0; }
 sp-button.compact-button .button-label { font-size: 12px; }
 sp-button.compact-button.wide-cta { width: 120px; min-width: 120px; }
-.bottom-actions { display: flex; flex-direction: row; padding-top: 10px; margin-top: 10px; border-top: 1px solid #454545; }
+.bottom-actions { display: flex; flex-direction: row; align-items: center; flex-shrink: 0; padding: 10px 14px 6px; border-top: 1px solid #3a3a3a; }
 sp-button.utility-button { flex: 1; width: 0; min-width: 0; height: 36px; min-height: 36px; padding: 0 6px; }
 sp-button.utility-button:first-child { margin-right: 8px; }
 /* UXP 里的 sp-button 是黑盒，不能指望它内部是横向 flex。
@@ -265,3 +274,14 @@ sp-button.install-button .button-label { font-size: 11px; font-weight: 400; line
 /* 子选择器的兜底：万一真机不吃「>」组合器，后代选择器再保一遍。 */
 .field-wrap sp-textfield { width: 100%; opacity: 0.45; }
 .muted.error-text { color: #ffb4a0; }
+
+/* v2.0.1：预计大小与底部参考线操作。 */
+.image-size-summary { font-size: 11px; line-height: 16px; color: #b8b8b8; margin: 0 0 8px; min-height: 16px; }
+sp-button.guide-lock-button { width: 36px; min-width: 36px; height: 36px; min-height: 36px; margin: 0 0 0 8px; padding: 0; }
+sp-button.guide-lock-button.locked { background: #1f4f86; border-color: #1473e6; }
+sp-button.guide-lock-button[disabled] img { opacity: 0.45; }
+
+.size-input-row .field-wrap { flex: 1; min-width: 0; max-width: 138px; }
+.size-input-row sp-textfield.size-input { min-width: 0; width: 100%; }
+.update-row { flex-wrap: wrap; }
+.update-left { flex-wrap: wrap; }
