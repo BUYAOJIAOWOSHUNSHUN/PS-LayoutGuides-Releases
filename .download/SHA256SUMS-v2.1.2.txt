@@ -1,0 +1,2 @@
+d3c3cbfdb879d77a382464e87116ebd525512dd505af0e37f3aae88286599fa4  PS-LayoutGuides-v2.1.2.ccx
+85f90a024dd31450b000d2faa67402d099af80ff56a9cad2a055388399c00087  PS-LayoutGuides-v2.1.2-portable.zip

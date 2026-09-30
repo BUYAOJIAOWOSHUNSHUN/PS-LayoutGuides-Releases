@@ -54,7 +54,11 @@ html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
 .document-action-label { width: 20px; margin-right: 6px; flex-shrink: 0; font-size: 10px; color: #a2a2a2; }
 .document-actions .mode-switch { width: 84px; box-sizing: border-box; margin-left: 0; }
 .document-actions .mode-option { flex: 1; text-align: center; min-width: 0; padding: 3px 4px; }
-.export-row { margin-top: 5px; }
+.folder-row { margin-top: 6px; }
+.open-folder-button { width: 84px; box-sizing: border-box; padding: 3px 4px; border: 1px solid #545454; border-radius: 4px; font-size: 10px; color: #c2c2c2; text-align: center; cursor: pointer; }
+.open-folder-button:hover { background: #3b4c60; color: #ffffff; }
+.open-folder-button[disabled] { opacity: 0.45; cursor: default; }
+.export-row { margin-top: 7px; }
 .export-label { align-self: center; line-height: 16px; }
 .export-switch { flex-direction: column; }
 .export-format-row { display: flex; flex-direction: row; align-items: center; width: 100%; }
@@ -94,16 +98,9 @@ html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
 .bleed-cross-mid .bleed-cell + .bleed-cell { margin-left: 12px; }
 .bleed-label { display: block; width: 17px; height: 32px; line-height: 32px; text-align: center; color: #c8c8c8; font-size: 12px; flex-shrink: 0; }
 
-/* 数值框是**自绘**的：一个 span + 键盘事件，不是 sp-textfield。
-   UXP 的 sp-textfield 内部底色写死（真机实测 #1e1e1e），
-   --spectrum-textfield-background-color 盖不掉、quiet 变体也只去了边框，
-   外面套浅灰容器就会变成「灰框里挖了个黑洞」。自绘之后这层灰才真的说了算。
-   宽度固定 40px：填「4.8」这种值用不了那么长，也正好把整行压窄。 */
-/* 出血数值框用真输入控件 sp-textfield（v1.9.6 起）：
-   之前自绘 span 的按键会透传给 PS 本体（打数字 → 图层面板不透明度跟着变），
-   真输入框获得焦点后宿主不再接收按键。容器只负责排版，不再画边框底色。 */
+/* 使用真正的文本输入框，保留原生焦点、光标和选区。 */
 .bleed-input { display: flex; align-items: center; height: 32px; flex-shrink: 0; }
-sp-textfield.bleed-field { width: 44px; height: 32px; min-height: 32px; flex: 0 0 auto; margin: 0; box-sizing: border-box; }
+input.bleed-field { width: 44px; flex: 0 0 auto; padding: 0 5px; }
 .bleed-unit { font-size: 10px; line-height: 32px; color: #b8b8b8; flex-shrink: 0; padding: 0 6px 0 4px; }
 /* 步进箭头在数值**后面**。图标走 PNG —— CSS 的 border 三角在 UXP 里画不出斜接，
    真机上只剩一条横杠，就是之前「图标显示不全」的原因。 */
@@ -172,20 +169,12 @@ sp-button { display: flex; align-items: center; justify-content: center; text-al
 /* 色块加大一号（v1.9.16，老大反馈图标小）。 */
 .ext-swatch { display: block; width: 26px; height: 32px; box-sizing: border-box; border: 1px solid #5a5a5a; border-radius: 2px; background: #ffffff; cursor: pointer; }
 .ext-swatch:hover { border-color: #8ab4e8; }
-/* 输入框底色调浅（v1.9.16，老大反馈太黑）：先把组件主题整体调到 dark
-   （manifest theme），再补一组 Spectrum 变量覆盖；变量若不被这版 UXP 认就维持
-   dark 主题的底色，不再更深。 */
-sp-textfield.size-input {
-  --spectrum-textfield-m-background-color: #3c3c3c;
-  --mod-textfield-background-color: #3c3c3c;
-  --spectrum-alias-input-background-color: #3c3c3c;
-}
-/* 图片/画布数值框也是真输入控件 sp-textfield（v1.9.6 起，同样为了根治按键透传）。
-   原生光标、拖拽选区、宿主按键抑制都是白送的；内部底色是组件写死的深灰（功能优先）。 */
-/* v1.9.22：底色还是太黑 → 透明度直接写进数值框自己的专属规则（不再依赖
-   .field-wrap > sp-textfield 的子选择器组合，真机上那招可能没匹配上），
-   衬底同步提亮到 #909090。内部视觉约 #5d，白字柔化为 #c2（PS 对话框观感）。 */
-sp-textfield.size-input { width: 88px; height: 32px; min-height: 32px; flex: 0 0 auto; margin: 0; box-sizing: border-box; opacity: 0.45; }
+/* 原 sp-textfield 的内部背景不接受覆盖，半透明衬底也未生效。
+   标准 input 使用不透明实色背景，沿用原有输入、焦点和提交事件。 */
+input.size-input, input.bleed-field { appearance: none; display: block; height: 32px; min-height: 32px; margin: 0; box-sizing: border-box; background-color: #484848; color: #f2f2f2; border: 1px solid #626262; border-radius: 3px; font-size: 13px; }
+input.size-input { width: 88px; flex: 1; min-width: 0; max-width: 138px; padding: 0 10px; }
+input.size-input:focus, input.bleed-field:focus { border-color: #8ab4e8; }
+input.size-input[disabled], input.bleed-field[disabled] { color: #a2a2a2; background-color: #3c3c3c; }
 /* 单位下拉由 sp-picker 承担（见上）；分辨率行固定 PPI。 */
 /* 确认修改行：右对齐的按钮；margin-top:auto 让它贴卡片底部。 */
 
@@ -271,16 +260,6 @@ sp-button.install-button .button-label { font-size: 11px; font-weight: 400; line
 .status-link { color: #6fa8ea; cursor: pointer; }
 .status-link:hover { color: #cfe2ff; text-decoration: underline; }
 
-/* 数值框底色调浅（v1.9.17，老大反馈太黑）：sp-textfield 内部底色是组件写死的
-   （主题、Spectrum 变量都动不了它），改用「浅灰衬底 + 半透明控件」——
-   控件透明度 0.5，衬底 #808080 透出来，内部视觉从近黑提到 #4f 左右
-  （PS 对话框的观感），白字随之柔化为浅灰（PS 对话框的字同样偏灰）。
-   透明度不影响焦点与键盘输入。衬底宽度与原数值框一致（88px），几何完全不变，
-   所以 9 个框必须包在 .field-wrap 里（main.js start() 末尾统一包）。 */
-.field-wrap { position: relative; display: flex; flex: 0 0 auto; width: 88px; background: #909090; border-radius: 3px; }
-.field-wrap > sp-textfield { width: 100%; opacity: 0.45; }
-/* 子选择器的兜底：万一真机不吃「>」组合器，后代选择器再保一遍。 */
-.field-wrap sp-textfield { width: 100%; opacity: 0.45; }
 .muted.error-text { color: #ffb4a0; }
 
 /* v2.0.1：预计大小与底部参考线操作。 */
@@ -289,7 +268,5 @@ sp-button.guide-lock-button { width: 36px; min-width: 36px; height: 36px; min-he
 sp-button.guide-lock-button.locked { background: #1f4f86; border-color: #1473e6; }
 sp-button.guide-lock-button[disabled] img { opacity: 0.45; }
 
-.size-input-row .field-wrap { flex: 1; min-width: 0; max-width: 138px; }
-.size-input-row sp-textfield.size-input { min-width: 0; width: 100%; }
 .update-row { flex-wrap: nowrap; }
 .update-left { flex-wrap: nowrap; }

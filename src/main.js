@@ -3,6 +3,7 @@
 const ps = require("photoshop");
 const { entrypoints, shell, storage } = require("uxp");
 const { exportDocument, exportQuickPNG } = require("./export-service.js");
+const { documentFolder } = require("./document-folder.js");
 const { pickColor, rgbToHex } = require("./color-picker.js");
 const { createPhotoshopHost } = require("./photoshop-host.js");
 const { GuideService, errorText } = require("./guide-service.js");
@@ -18,7 +19,7 @@ const BLEED_FIELDS = ["top", "bottom", "left", "right"];
 const BLEED_LABELS = { top: "上", bottom: "下", left: "左", right: "右" };
 const MODE_BUTTONS = ["update", "logo", "endorsement", "bleed"];
 // 三种生成按钮位于页签内容之外，两页真正共用，避免尺寸与事件不同步。
-const ALL_BUTTONS = MODE_BUTTONS.concat(["clear", "visibility", "guideLock", "applyImageSize", "applyCanvasSize", "restoreImageSize", "restoreCanvasSize", "modeRGB", "modeCMYK", "exportJPG", "exportPNG", "exportPSD", "exportTIFF"]);
+const ALL_BUTTONS = MODE_BUTTONS.concat(["clear", "visibility", "guideLock", "applyImageSize", "applyCanvasSize", "restoreImageSize", "restoreCanvasSize", "modeRGB", "modeCMYK", "openDocumentFolder", "exportJPG", "exportPNG", "exportPSD", "exportTIFF"]);
 
 let currentTab = "screen";
 let bleedLocked = true;         // 出血四边默认锁定（老大要求）
@@ -86,13 +87,9 @@ function setDisabled(id, disabled) {
   else element.removeAttribute("disabled");
 }
 
-/* ---------- 数值输入框：真输入控件 sp-textfield（v1.9.6 起） ---------- */
-// 之前是自绘 span（自带模拟光标、逐字符选区），但 UXP 会把面板里自绘控件收到的
-// 按键**透传给 Photoshop 本体** —— 真机实测：在数值框打数字，图层面板的
-// 「不透明度」被当成快捷输入跟着变。preventDefault 挡不住这层透传。
-// 改用真输入控件后：聚焦期间宿主不再接收按键（官方内置插件同款行为），
-// 光标、拖拽选区也都是原生的。代价是控件内部底色为组件写死的深灰（功能优先）。
-// 读写统一走 readXxx/writeXxx；「修改」提交、失焦提交等语义不变。
+/* ---------- 数值输入框：原生 input ---------- */
+// 使用真实输入控件处理光标、选区与文字编辑；样式不再依赖半透明衬底。
+// 读写统一走 readXxx/writeXxx，图片/画布仅点击“修改”才提交。
 
 function disableAll(disabled) {
   for (const id of ALL_BUTTONS) setDisabled(id, disabled);
@@ -185,7 +182,7 @@ function fromDisplay(value) {
   return bleedUnit === "mm" ? value : value * 10;
 }
 
-/* ---------- 出血数值输入（真输入控件 sp-textfield） ---------- */
+/* ---------- 出血数值输入（原生 input） ---------- */
 
 // 编辑语义：输入框就是唯一事实（原生编辑），失焦/回车时读框内值校验提交，
 // Esc 把显示恢复成已提交值。编辑中的旧 editing[] 临时串机制随之删除。
@@ -204,6 +201,7 @@ function writeBleedValue(field, text) {
 // 一方面保证框里永远是合法数字，另一方面（真输入框聚焦时宿主本来就不收按键）
 // 双保险防止误触 PS 快捷键。
 function onBleedKeydown(field, event) {
+  if (event.ctrlKey || event.metaKey || event.altKey || event.isComposing) return;
   const key = event.key;
   if (key === "ArrowUp" || key === "ArrowDown") {
     event.preventDefault();
@@ -399,7 +397,7 @@ function refresh(explicit) {
 
 /* ---------- 图片大小 / 画布大小 编辑器 ---------- */
 
-// 尺寸使用原生 sp-textfield；失焦或回车仅结束输入，点「修改」才修改文档。
+// 尺寸使用原生 input；失焦或回车仅结束输入，点「修改」才修改文档。
 const SIZE_FIELDS = ["imageWidth", "imageHeight", "imageResolution", "canvasWidth", "canvasHeight"];
 
 /* 长度单位（模仿 PS 新建 / 画布大小对话框）：全部以英寸为桥互相换算。
@@ -567,8 +565,9 @@ function writeSizeValue(field, text) {
 }
 
 // 真输入框的原生编辑（光标/选区/退格都由控件自己处理），这里只做三件事：
-// Enter = 提交并交还焦点；Esc = 放弃编辑用文档当前值还原；非法字符一律吞掉。
+// Enter = 结束输入并交还焦点；Esc = 恢复文档值；组合快捷键交给原生输入框。
 function onSizeKeydown(field, event) {
+  if (event.ctrlKey || event.metaKey || event.altKey || event.isComposing) return;
   const key = event.key;
   if (key === "Enter") { event.preventDefault(); el(field).blur(); return; }
   if (key === "Escape") {
@@ -712,10 +711,7 @@ function renderImageSizeSummary() {
 
 /* ---------- 执行（图片大小 / 画布大小） ---------- */
 
-// UXP 的 sp-textfield 是黑盒组件：真机上 keydown 的 preventDefault **拦不住**
-// 内部输入框（按键直达控件内部，字母照样进得来——真机实锤：画布宽度能打出 sdad）。
-// 所以数字过滤改在 input 事件里做：把值洗一遍，只留数字和第一个小数点。
-// 代价是洗完光标跳到末尾 —— 数值框可接受。
+// 在 input 事件中统一清理键入、粘贴等来源的数值，只保留数字和第一个小数点。
 function sanitizeNumberText(raw) {
   let text = String(raw == null ? "" : raw).replace(/[^0-9.]/g, "");
   const first = text.indexOf(".");
@@ -923,6 +919,37 @@ async function changeDocMode(mode) {
     console.error(error);
     message = "颜色模式转换失败：" + errorText(error);
     failed = true;
+  } finally {
+    service.busy = false;
+    refresh(false);
+    status(message, failed);
+  }
+}
+
+async function openDocumentFolder() {
+  if (service.busy || colorDialogOpen || updateBusy) return;
+  const doc = host.active();
+  if (!doc) { status("当前没有打开的文档。", true); return; }
+  service.busy = true;
+  disableAll(true);
+  let message = "", failed = false;
+  try {
+    const folder = documentFolder(doc);
+    if (!folder) {
+      message = doc.cloudDocument
+        ? "当前文件是云文档，请先在本机保存一份，再打开所在文件夹。"
+        : "请先保存当前文件，再打开所在文件夹。";
+      status(message);
+      await ps.core.showAlert({ message });
+      return;
+    }
+    status("正在打开当前文件所在文件夹…");
+    const result = await shell.openPath(folder, "打开当前 Photoshop 文件所在的文件夹。");
+    if (result !== "") throw new Error(result || "系统未能打开文件夹。");
+    message = "已打开当前文件所在文件夹。";
+  } catch (error) {
+    failed = true;
+    message = "未能打开文件夹：" + errorText(error);
   } finally {
     service.busy = false;
     refresh(false);
@@ -1224,7 +1251,17 @@ async function installUpdate() {
 
 /* ---------- 生命周期 ---------- */
 
+async function hideResizeGripper() {
+  try {
+    await ps.core.suppressResizeGripper({ type: "panel", target: "layoutPanel", value: true });
+  } catch (error) {
+    // 外观设置失败不能影响文档功能；窗口尺寸仍由 manifest 限定。
+    console.error("隐藏面板缩放手柄失败:", error);
+  }
+}
+
 function start() {
+  void hideResizeGripper();
   if (!initialized) {
     // 页脚统一显示当前运行版本。
     // 版本号带 v 前缀显示（用户要求：v1.9 这种格式）。
@@ -1257,7 +1294,7 @@ function start() {
       bindAction(el("step-down-" + field), () => stepBleed(field, -1));
     }
     for (const id of MODE_BUTTONS) el(id).addEventListener("click", () => { void run(id); });
-    // 图片大小 / 画布大小：自绘数值框 + 锁链 + 锚点 + 修改
+    // 图片大小 / 画布大小：原生数值框 + 锁链 + 锚点 + 修改
     renderImageLock();
     try { buildAnchorGrid(); } catch (error) { console.error("锚点初始化失败:", error); }
     bindAction(el("imageLock"), toggleImageLock);
@@ -1307,20 +1344,6 @@ function start() {
     renderExtSwatch();
     bindAction(el("canvasExtSwatch"), () => { void openCanvasColorPicker(); });
     el("canvasExtSwatch").title = "选择画布扩展颜色";
-    // 数值框底色调浅（v1.9.17，老大反馈太黑）：sp-textfield 内部底色是组件写死的
-    //（主题、CSS 变量都动不了它），改用「浅灰衬底 + 半透明控件」——见 styles.css
-    // 的 .field-wrap。9 个数值框（尺寸 5 + 出血 4）统一包一层，几何保持不变。
-    for (const id of ["imageWidth", "imageHeight", "imageResolution", "canvasWidth", "canvasHeight",
-                      "bleed-top", "bleed-bottom", "bleed-left", "bleed-right"]) {
-      const fieldEl = el(id);
-      if (!fieldEl || !fieldEl.parentNode) continue;
-      const wrap = document.createElement("span");
-      wrap.className = "field-wrap";
-      fieldEl.parentNode.insertBefore(wrap, fieldEl);
-      wrap.appendChild(fieldEl);
-      // 内联透明度做双保险：真机上 .field-wrap > sp-textfield 的子选择器可能没匹配上。
-      fieldEl.style.opacity = "0.45";
-    }
     el("applyImageSize").addEventListener("click", () => { void applyImageSize(); });
     el("applyImageSize").title = "按当前值修改图片大小";
     bindAction(el("restoreImageSize"), restoreImageSize);
@@ -1330,6 +1353,7 @@ function start() {
     // 颜色模式芯片：点击把文档转换成对应模式。
     bindAction(el("modeRGB"), () => { void changeDocMode("RGB"); });
     bindAction(el("modeCMYK"), () => { void changeDocMode("CMYK"); });
+    bindAction(el("openDocumentFolder"), () => { void openDocumentFolder(); });
     bindAction(el("exportJPG"), () => { void quickExport("jpg"); });
     bindAction(el("exportPNG"), () => { void quickExport("png"); });
     bindAction(el("exportPSD"), () => { void quickExport("psd"); });

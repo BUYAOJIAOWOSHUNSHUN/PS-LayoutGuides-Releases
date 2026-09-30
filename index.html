@@ -28,6 +28,9 @@
         <div class="document-info">
           <div id="documentName" class="document-name">请打开 Photoshop 文档</div>
           <div id="dimensions" class="muted">以整个文档画布为基准</div>
+          <div class="folder-row">
+            <div id="openDocumentFolder" class="open-folder-button" role="button" tabindex="0" disabled title="打开当前文件所在的文件夹">打开文件夹</div>
+          </div>
         </div>
         <!-- 颜色模式显示 + 切换：高亮的是文档当前模式，点另一个直接转换文档模式。 -->
         <div class="document-actions">
@@ -42,15 +45,15 @@
             <span class="document-action-label export-label">导出</span>
             <div class="mode-switch export-switch" role="group" aria-label="导出格式">
               <div class="export-format-row">
-                <div id="exportJPG" class="mode-option" role="button" tabindex="0" title="导出最高质量 JPG">JPG</div>
-                <span class="export-divider" aria-hidden="true"></span>
-                <div id="exportPNG" class="mode-option" role="button" tabindex="0" title="文件 → 导出 → 快速导出为 PNG">PNG</div>
-              </div>
-              <span class="export-row-divider" aria-hidden="true"></span>
-              <div class="export-format-row">
                 <div id="exportPSD" class="mode-option" role="button" tabindex="0" title="储存为 PSD 副本，保留图层">PSD</div>
                 <span class="export-divider" aria-hidden="true"></span>
                 <div id="exportTIFF" class="mode-option" role="button" tabindex="0" title="储存为 TIFF 副本，使用默认选项">TIFF</div>
+              </div>
+              <span class="export-row-divider" aria-hidden="true"></span>
+              <div class="export-format-row">
+                <div id="exportJPG" class="mode-option" role="button" tabindex="0" title="导出最高质量 JPG">JPG</div>
+                <span class="export-divider" aria-hidden="true"></span>
+                <div id="exportPNG" class="mode-option" role="button" tabindex="0" title="文件 → 导出 → 快速导出为 PNG">PNG</div>
               </div>
             </div>
           </div>
@@ -76,7 +79,7 @@
             <div class="size-field">
               <span class="size-field-label">宽度</span>
               <div class="size-input-row">
-                <sp-textfield id="imageWidth" class="size-input" aria-label="图片宽度"></sp-textfield>
+                <input type="text" id="imageWidth" class="size-input" aria-label="图片宽度" />
                 <!-- 单位下拉是自绘的（div + JS 菜单）：sp-picker 真机事件不可控（菜单能弹但选项选不上），自绘行为完全可控。 -->
                 <div id="imageUnitPicker" class="unit-picker" role="button" tabindex="0" aria-label="图片大小单位" data-value="px"></div>
               </div>
@@ -84,14 +87,14 @@
             <div class="size-field">
               <span class="size-field-label">高度</span>
               <div class="size-input-row">
-                <sp-textfield id="imageHeight" class="size-input" aria-label="图片高度"></sp-textfield>
+                <input type="text" id="imageHeight" class="size-input" aria-label="图片高度" />
                 <span class="size-unit-static" id="imageUnitText">像素</span>
               </div>
             </div>
             <div class="size-field">
               <span class="size-field-label">分辨率</span>
               <div class="size-input-row">
-                <sp-textfield id="imageResolution" class="size-input" aria-label="图片分辨率"></sp-textfield>
+                <input type="text" id="imageResolution" class="size-input" aria-label="图片分辨率" />
                 <span class="size-unit-static" title="像素/英寸">PPI</span>
               </div>
             </div>
@@ -110,14 +113,14 @@
             <div class="size-field">
               <span class="size-field-label">宽度</span>
               <div class="size-input-row">
-                <sp-textfield id="canvasWidth" class="size-input" aria-label="画布宽度"></sp-textfield>
+                <input type="text" id="canvasWidth" class="size-input" aria-label="画布宽度" />
                 <div id="canvasUnitPicker" class="unit-picker" role="button" tabindex="0" aria-label="画布大小单位" data-value="cm"></div>
               </div>
             </div>
             <div class="size-field">
               <span class="size-field-label">高度</span>
               <div class="size-input-row">
-                <sp-textfield id="canvasHeight" class="size-input" aria-label="画布高度"></sp-textfield>
+                <input type="text" id="canvasHeight" class="size-input" aria-label="画布高度" />
                 <span class="size-unit-static" id="canvasUnitText">厘米</span>
               </div>
             </div>
@@ -157,18 +160,13 @@
           </div>
         </div>
         <div class="parameter-card bleed-card">
-          <!-- 锁定按钮放在十字正中（左/右之间）：位置即含义 —— 锁住时四边联动。
-               数值框是自绘的（span + 键盘事件），不是 sp-textfield：
-               UXP 的 sp-textfield 内部底色写死、CSS 和 quiet 变体都盖不掉，
-               真机上就是一块黑。自绘之后底色完全由 styles.css 说了算。
-               十字排布：上在上、下在下、左/右分居中间行两侧，锁在正中。
-               行结构是普通横向 flex，不能用 CSS Grid（UXP 真机不支持）。 -->
+          <!-- 原生文本输入保留光标和选择操作；十字排布使用 UXP 支持的 Flex。 -->
           <div class="bleed-grid">
             <div class="bleed-cross-row bleed-cross-center">
               <div class="bleed-cell">
                 <span class="bleed-label">上</span>
                 <div class="bleed-input">
-                  <sp-textfield id="bleed-top" class="bleed-field" aria-label="上出血"></sp-textfield><div class="stepper"><div id="step-up-top" class="step-up" role="button" tabindex="0" aria-label="上出血增加 1"><img class="chevron" src="assets/chevron-up.png" alt=""></div><div id="step-down-top" class="step-down" role="button" tabindex="0" aria-label="上出血减少 1"><img class="chevron" src="assets/chevron-down.png" alt=""></div></div><span class="bleed-unit" id="unit-top">mm</span>
+                  <input type="text" id="bleed-top" class="bleed-field" aria-label="上出血" /><div class="stepper"><div id="step-up-top" class="step-up" role="button" tabindex="0" aria-label="上出血增加 1"><img class="chevron" src="assets/chevron-up.png" alt=""></div><div id="step-down-top" class="step-down" role="button" tabindex="0" aria-label="上出血减少 1"><img class="chevron" src="assets/chevron-down.png" alt=""></div></div><span class="bleed-unit" id="unit-top">mm</span>
                 </div>
               </div>
             </div>
@@ -176,13 +174,13 @@
               <div class="bleed-cell">
                 <span class="bleed-label">左</span>
                 <div class="bleed-input">
-                  <sp-textfield id="bleed-left" class="bleed-field" aria-label="左出血"></sp-textfield><div class="stepper"><div id="step-up-left" class="step-up" role="button" tabindex="0" aria-label="左出血增加 1"><img class="chevron" src="assets/chevron-up.png" alt=""></div><div id="step-down-left" class="step-down" role="button" tabindex="0" aria-label="左出血减少 1"><img class="chevron" src="assets/chevron-down.png" alt=""></div></div><span class="bleed-unit" id="unit-left">mm</span>
+                  <input type="text" id="bleed-left" class="bleed-field" aria-label="左出血" /><div class="stepper"><div id="step-up-left" class="step-up" role="button" tabindex="0" aria-label="左出血增加 1"><img class="chevron" src="assets/chevron-up.png" alt=""></div><div id="step-down-left" class="step-down" role="button" tabindex="0" aria-label="左出血减少 1"><img class="chevron" src="assets/chevron-down.png" alt=""></div></div><span class="bleed-unit" id="unit-left">mm</span>
                 </div>
               </div>
               <div class="bleed-cell">
                 <span class="bleed-label">右</span>
                 <div class="bleed-input">
-                  <sp-textfield id="bleed-right" class="bleed-field" aria-label="右出血"></sp-textfield><div class="stepper"><div id="step-up-right" class="step-up" role="button" tabindex="0" aria-label="右出血增加 1"><img class="chevron" src="assets/chevron-up.png" alt=""></div><div id="step-down-right" class="step-down" role="button" tabindex="0" aria-label="右出血减少 1"><img class="chevron" src="assets/chevron-down.png" alt=""></div></div><span class="bleed-unit" id="unit-right">mm</span>
+                  <input type="text" id="bleed-right" class="bleed-field" aria-label="右出血" /><div class="stepper"><div id="step-up-right" class="step-up" role="button" tabindex="0" aria-label="右出血增加 1"><img class="chevron" src="assets/chevron-up.png" alt=""></div><div id="step-down-right" class="step-down" role="button" tabindex="0" aria-label="右出血减少 1"><img class="chevron" src="assets/chevron-down.png" alt=""></div></div><span class="bleed-unit" id="unit-right">mm</span>
                 </div>
               </div>
             </div>
@@ -190,7 +188,7 @@
               <div class="bleed-cell">
                 <span class="bleed-label">下</span>
                 <div class="bleed-input">
-                  <sp-textfield id="bleed-bottom" class="bleed-field" aria-label="下出血"></sp-textfield><div class="stepper"><div id="step-up-bottom" class="step-up" role="button" tabindex="0" aria-label="下出血增加 1"><img class="chevron" src="assets/chevron-up.png" alt=""></div><div id="step-down-bottom" class="step-down" role="button" tabindex="0" aria-label="下出血减少 1"><img class="chevron" src="assets/chevron-down.png" alt=""></div></div><span class="bleed-unit" id="unit-bottom">mm</span>
+                  <input type="text" id="bleed-bottom" class="bleed-field" aria-label="下出血" /><div class="stepper"><div id="step-up-bottom" class="step-up" role="button" tabindex="0" aria-label="下出血增加 1"><img class="chevron" src="assets/chevron-up.png" alt=""></div><div id="step-down-bottom" class="step-down" role="button" tabindex="0" aria-label="下出血减少 1"><img class="chevron" src="assets/chevron-down.png" alt=""></div></div><span class="bleed-unit" id="unit-bottom">mm</span>
                 </div>
               </div>
             </div>
@@ -262,7 +260,7 @@
         <div class="update-left">
           <sp-button id="checkUpdate" variant="secondary" class="update-button"><span class="button-label">检查更新</span></sp-button>
           <!-- 版本号跟着「检查更新」走：查更新时一眼能对上「本地是什么版本、远端是什么版本」。 -->
-          <span id="footerVersion" class="footer-version">v2.1.1</span>
+          <span id="footerVersion" class="footer-version">v2.1.2</span>
           <sp-button id="installUpdate" variant="cta" class="install-button hidden" title="下载并自动安装更新"><span class="button-label">下载</span></sp-button>
           <!-- 手动更新：链接样式的文字按钮（悬停下划线+高亮），点了打开 GitHub 发布页自行下载覆盖。 -->
           <div id="openRelease" class="release-link hidden" role="button" tabindex="0">手动更新</div>
