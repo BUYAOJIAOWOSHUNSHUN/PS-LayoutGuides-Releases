@@ -17,4 +17,8 @@ function documentFolder(doc) {
   return path.slice(0, last + 1);
 }
 
-module.exports = { documentFolder };
+function documentIsUnsaved(doc) {
+  return !!doc && (doc.saved === false || (!doc.cloudDocument && !documentFolder(doc)));
+}
+
+module.exports = { documentFolder, documentIsUnsaved };

@@ -4,6 +4,19 @@
 文中验证文件路径指向开发时的本地版本归档；验证文件不随公开源码或安装包分发。
 每条都注明依据，标注「待真机验证」的表示只在逻辑层验证过。
 
+## v2.1.3：保存状态与原生保存
+
+`Document.saved` 表示最后一次修改后是否保存，不能用它判断文件路径是否存在。`Document.path` 对本地文件为完整路径，对云文档为标识。红字单独刷新，不加入尺寸变化判断，避免保存状态变化冲掉输入草稿。
+
+未保存文档先使用 `dialog.uxpShowModal` 提供“现在保存 / 取消”。只有返回 `save` 才在 `executeAsModal({interactive:true})` 中调用目标文档的 `save()`。首次保存会显示 Photoshop 原生保存窗口；已有路径时按原生保存处理。保存前后核对文档 ID，完成后重新读取保存状态和本地路径，取消或报错不打开目录。
+
+Photoshop 27.9.1 已实测首次保存与原生保存窗口取消、已有路径保存、确认窗取消 / 关闭、编辑后红字出现、保存后红字清除、系统目录打开及实际保存文件。收尾版重启加载后，在 1200×800 RGB 8 位测试文档中输入 900×600 草稿：文档仍为 1200×800，编辑文字和插件内保存、PS 原生 Ctrl+S 保存均未清掉草稿。切换到首次未保存的 600×400 空白文档时显示红字，切回已保存文档时清除；空白文档即使 `saved` 为 true，也因没有本地路径正确显示首次未保存。
+
+依据（2026-09-30 查阅；真机边界见上文）：
+- https://developer.adobe.com/photoshop/uxp/ps_reference/classes/document/
+- https://developer.adobe.com/uxp/guides/how-to/add-modal-dialogs/
+- https://developer.adobe.com/photoshop/uxp/2022/ps-reference/media/executeasmodal
+
 ---
 
 ## 1. 标尺原点是 16.16 定点数
@@ -220,7 +233,7 @@ UXP 的 DOM 是自研实现，不是浏览器那套，以下写法**不保证可
 
 1. `manifest.json` 的 `version`
 2. `src/update-config.js` 的 `VERSION`
-3. `index.html` 里标题后面的 `#headerVersion`（页脚那个 `#versionText` 已删，避免显示两遍）
+3. `index.html` 的页脚 `#footerVersion`（启动时也由 `VERSION` 写入）
 4. 文件夹名 / 文件名 `品牌版式标准规范PS插件-vX.Y.Z`
 
 **每次发版必须提版本号**：插件是拿远端 manifest 的 `version` 和本地比大小

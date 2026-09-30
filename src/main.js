@@ -3,7 +3,8 @@
 const ps = require("photoshop");
 const { entrypoints, shell, storage } = require("uxp");
 const { exportDocument, exportQuickPNG } = require("./export-service.js");
-const { documentFolder } = require("./document-folder.js");
+const { documentFolder, documentIsUnsaved } = require("./document-folder.js");
+const { confirmDocumentSave, saveDocument } = require("./document-save.js");
 const { pickColor, rgbToHex } = require("./color-picker.js");
 const { createPhotoshopHost } = require("./photoshop-host.js");
 const { GuideService, errorText } = require("./guide-service.js");
@@ -322,6 +323,7 @@ function refresh(explicit) {
   if (service.busy) return;
   try {
     const snapshot = service.snapshot();
+    renderDocumentSaveState(snapshot ? host.active() : null);
     if (snapshot) snapshot.bitDepth = host.getBitDepth(host.active());
     const signature = JSON.stringify(snapshot);
     const changed = signature !== lastSignature;
@@ -926,6 +928,12 @@ async function changeDocMode(mode) {
   }
 }
 
+function renderDocumentSaveState(doc) {
+  const badge = el("documentUnsaved");
+  badge.className = "document-unsaved" + (documentIsUnsaved(doc) ? "" : " hidden");
+  badge.title = doc && documentFolder(doc) ? "当前文件有未保存修改" : "当前文件尚未保存到本机";
+}
+
 async function openDocumentFolder() {
   if (service.busy || colorDialogOpen || updateBusy) return;
   const doc = host.active();
@@ -934,15 +942,34 @@ async function openDocumentFolder() {
   disableAll(true);
   let message = "", failed = false;
   try {
-    const folder = documentFolder(doc);
-    if (!folder) {
-      message = doc.cloudDocument
-        ? "当前文件是云文档，请先在本机保存一份，再打开所在文件夹。"
-        : "请先保存当前文件，再打开所在文件夹。";
-      status(message);
+    const isCurrent = () => { const current = host.active(); return !!current && current.id === doc.id; };
+    if (doc.cloudDocument) {
+      message = "当前文件是云文档，请先在本机保存一份，再打开所在文件夹。";
       await ps.core.showAlert({ message });
       return;
     }
+    if (documentIsUnsaved(doc)) {
+      const hasPath = !!documentFolder(doc);
+      const prompt = hasPath
+        ? "当前文件有未保存修改。现在保存后打开所在文件夹吗？"
+        : "当前文件尚未保存。点击“现在保存”，在 Photoshop 保存窗口选择文件名和位置。";
+      message = "已取消，当前文件尚未保存。";
+      if (!await confirmDocumentSave(document, prompt)) return;
+      status("正在保存当前文件…");
+      if (!await saveDocument(ps, doc, isCurrent)) {
+        message = "保存已取消或未完成，当前文件仍未保存。";
+        return;
+      }
+    }
+    if (!isCurrent()) throw new Error("当前文档已切换或关闭，请在目标文档重新操作。");
+    const folder = documentFolder(doc);
+    if (!folder) {
+      message = "尚未获得本机文件路径，请在本机保存一份后重试。";
+      await ps.core.showAlert({ message });
+      return;
+    }
+    // 系统打开权限可能等待用户较久，原生保存成功后先清除红字。
+    renderDocumentSaveState(doc);
     status("正在打开当前文件所在文件夹…");
     const result = await shell.openPath(folder, "打开当前 Photoshop 文件所在的文件夹。");
     if (result !== "") throw new Error(result || "系统未能打开文件夹。");

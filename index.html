@@ -30,6 +30,7 @@
           <div id="dimensions" class="muted">以整个文档画布为基准</div>
           <div class="folder-row">
             <div id="openDocumentFolder" class="open-folder-button" role="button" tabindex="0" disabled title="打开当前文件所在的文件夹">打开文件夹</div>
+            <span id="documentUnsaved" class="document-unsaved hidden" role="status">未保存</span>
           </div>
         </div>
         <!-- 颜色模式显示 + 切换：高亮的是文档当前模式，点另一个直接转换文档模式。 -->
@@ -260,7 +261,7 @@
         <div class="update-left">
           <sp-button id="checkUpdate" variant="secondary" class="update-button"><span class="button-label">检查更新</span></sp-button>
           <!-- 版本号跟着「检查更新」走：查更新时一眼能对上「本地是什么版本、远端是什么版本」。 -->
-          <span id="footerVersion" class="footer-version">v2.1.2</span>
+          <span id="footerVersion" class="footer-version">v2.1.3</span>
           <sp-button id="installUpdate" variant="cta" class="install-button hidden" title="下载并自动安装更新"><span class="button-label">下载</span></sp-button>
           <!-- 手动更新：链接样式的文字按钮（悬停下划线+高亮），点了打开 GitHub 发布页自行下载覆盖。 -->
           <div id="openRelease" class="release-link hidden" role="button" tabindex="0">手动更新</div>
