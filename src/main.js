@@ -4,7 +4,10 @@ const ps = require("photoshop");
 const { entrypoints, shell, storage } = require("uxp");
 const { exportDocument, exportQuickPNG } = require("./export-service.js");
 const { documentFolder, documentIsUnsaved } = require("./document-folder.js");
-const { confirmDocumentSave, saveDocument } = require("./document-save.js");
+const { confirmDocumentSave, saveDocument, saveDocumentAs } = require("./document-save.js");
+const { createNavigatorPreview } = require("./navigator-service.js");
+const { createNavigatorZoom, zoomToSlider, sliderToZoom } = require("./navigator-zoom.js");
+const { createNavigatorViewport } = require("./navigator-viewport.js");
 const { pickColor, rgbToHex } = require("./color-picker.js");
 const { createPhotoshopHost } = require("./photoshop-host.js");
 const { GuideService, errorText } = require("./guide-service.js");
@@ -20,7 +23,7 @@ const BLEED_FIELDS = ["top", "bottom", "left", "right"];
 const BLEED_LABELS = { top: "上", bottom: "下", left: "左", right: "右" };
 const MODE_BUTTONS = ["update", "logo", "endorsement", "bleed"];
 // 三种生成按钮位于页签内容之外，两页真正共用，避免尺寸与事件不同步。
-const ALL_BUTTONS = MODE_BUTTONS.concat(["clear", "visibility", "guideLock", "applyImageSize", "applyCanvasSize", "restoreImageSize", "restoreCanvasSize", "modeRGB", "modeCMYK", "openDocumentFolder", "exportJPG", "exportPNG", "exportPSD", "exportTIFF"]);
+const ALL_BUTTONS = MODE_BUTTONS.concat(["clear", "visibility", "guideLock", "applyImageSize", "applyCanvasSize", "restoreImageSize", "restoreCanvasSize", "modeRGB", "modeCMYK", "openDocumentFolder", "saveCurrentDocument", "exportJPG", "exportPNG", "exportPSD", "exportTIFF"]);
 
 let currentTab = "screen";
 let bleedLocked = true;         // 出血四边默认锁定（老大要求）
@@ -40,6 +43,15 @@ let pendingUpdate = null;
 let updateBusy = false;
 let installedUpdateVersion = "";
 let registered = false;
+let navigatorLastPreview = null;
+let navigatorZoomBusy = false;
+let navigatorReadBusy = false;
+let navigatorZoomDocumentId = null;
+let navigatorZoomDraft = null;
+let navigatorLastViewport = null;
+let navigatorDrag = null;
+let navigatorViewTimer = null;
+let navigatorRGBPageMeasure = null;
 
 // 9 格锚点的标识顺序，与 PS 的「画布大小」对话框一致：左上→右下。
 // 下标即布局：row * 3 + col。
@@ -52,6 +64,34 @@ const ANCHOR_IDS = [
 const el = id => document.getElementById(id);
 const format = n => Number(n.toFixed(4)).toString();
 const px = n => format(n) + " px";
+const navigatorPreview = createNavigatorPreview({
+  imaging: ps.imaging,
+  readScope: async action => {
+    navigatorReadBusy = true;
+    try { return await ps.core.executeAsModal(action, { commandName: "刷新导航器预览", timeOut: 0 }); }
+    finally { navigatorReadBusy = false; }
+  },
+  getActiveDocument: () => host.active(),
+  canRead: () => !service.busy && !colorDialogOpen && !updateBusy && !navigatorZoomBusy,
+  render: renderNavigatorPreview
+});
+const navigatorZoom = createNavigatorZoom({
+  ps,
+  getActiveDocument: () => host.active(),
+  canWrite: () => !service.busy && !colorDialogOpen && !updateBusy && !navigatorReadBusy,
+  render: renderNavigatorZoom,
+  onViewChange: () => navigatorViewport.update(host.active()),
+  onError: error => {
+    console.error("导航器视图操作失败:", error);
+    el("navigatorHint").textContent = "暂时无法调整视图，请重试";
+  }
+});
+const navigatorViewport = createNavigatorViewport({
+  ps,
+  getActiveDocument: () => host.active(),
+  canRead: () => !service.busy && !colorDialogOpen && !updateBusy && !navigatorReadBusy && !navigatorZoomBusy,
+  render: renderNavigatorViewport
+});
 
 // UXP 的 DOM 是自研实现，HTMLCollection / NodeList 不保证可迭代，
 // 所以统一用下标遍历，不依赖 for...of、Array.from 或 innerHTML。
@@ -319,11 +359,239 @@ function updateBleedPreview() {
 
 /* ---------- 文档信息 ---------- */
 
+function renderNavigatorZoom(state) {
+  navigatorZoomBusy = state.busy;
+  navigatorZoomDocumentId = state.documentId;
+  if (navigatorZoomDraft && navigatorZoomDraft.documentId !== state.documentId) navigatorZoomDraft = null;
+  const available = state.enabled && Number.isFinite(state.zoom);
+  const displayedZoom = navigatorZoomDraft ? navigatorZoomDraft.percent : state.zoom;
+  el("navigatorZoomValue").textContent = available ? Number(displayedZoom.toFixed(2)) + "%" : "—";
+  // Preserve the user's slider position during polling and avoid redundant writes.
+  if (available && !navigatorZoomDraft) {
+    const position = zoomToSlider(state.zoom);
+    if (Number(el("navigatorZoom").value) !== position) el("navigatorZoom").value = position;
+  }
+  for (const id of ["navigatorZoom", "navigatorZoomOut", "navigatorZoomIn"]) {
+    if (el(id).disabled !== !available) setDisabled(id, !available);
+  }
+}
+
+function previewNavigatorZoom(event) {
+  const percent = sliderToZoom(Number(event.target.value));
+  if (navigatorZoomDocumentId == null || percent == null) return;
+  navigatorZoomDraft = { documentId: navigatorZoomDocumentId, percent };
+  el("navigatorZoomValue").textContent = Number(percent.toFixed(2)) + "%";
+}
+
+function commitNavigatorZoom(event) {
+  cancelNavigatorDrag();
+  const percent = sliderToZoom(Number(event.target.value));
+  navigatorZoomDraft = null;
+  // Apply the final slider value on change; input only previews the percentage.
+  navigatorZoom.request(percent);
+}
+
+function layoutNavigatorImage() {
+  fitNavigatorSpace();
+  if (!navigatorLastPreview) return;
+  const stage = el("navigatorStage");
+  const width = stage.clientWidth - 16;
+  const height = stage.clientHeight - 16;
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return;
+  const scale = Math.min(width / navigatorLastPreview.width, height / navigatorLastPreview.height);
+  const image = el("navigatorImage");
+  image.style.width = Math.max(1, Math.round(navigatorLastPreview.width * scale)) + "px";
+  image.style.height = Math.max(1, Math.round(navigatorLastPreview.height * scale)) + "px";
+  const surface = el("navigatorSurface");
+  surface.style.width = image.style.width;
+  surface.style.height = image.style.height;
+  layoutNavigatorViewport();
+}
+
+function fitNavigatorSpace() {
+  const content = el("mainContent"), section = el("navigatorSection");
+  const page = el(currentTab === "print" ? "pagePrint" : "pageScreen");
+  if (!content || !section || !page) return;
+  const contentRect = content.getBoundingClientRect();
+  const pageRect = page.getBoundingClientRect();
+  if (!(content.clientHeight > 0 && pageRect.height > 0) ||
+      !Number.isFinite(content.clientHeight) || !Number.isFinite(pageRect.height) ||
+      !Number.isFinite(contentRect.top)) return;
+  const rgbHeight = measureNavigatorRGBPage(pageRect);
+  if (!(rgbHeight > 0) || !Number.isFinite(rgbHeight)) return;
+  // Keep the shared guide/navigator area at the RGB page's vertical position.
+  // A shorter print form leaves its extra space below the bleed settings.
+  const printPage = el("pagePrint");
+  const minHeight = rgbHeight + "px";
+  if (printPage.style.minHeight !== minHeight) printPage.style.minHeight = minHeight;
+  // Read the new layout after reserving space; the old top would double-count it.
+  const sectionRect = section.getBoundingClientRect();
+  const activePageHeight = currentTab === "print" ? page.getBoundingClientRect().height : pageRect.height;
+  if (!(activePageHeight > 0) || !Number.isFinite(activePageHeight) ||
+      !Number.isFinite(sectionRect.top)) return;
+  // Reserve the same space for the larger RGB page when the print page is open.
+  const reservedPageHeight = Math.max(rgbHeight, activePageHeight);
+  const scrollTop = Number.isFinite(content.scrollTop) ? content.scrollTop : 0;
+  const occupiedTop = sectionRect.top - contentRect.top + scrollTop + reservedPageHeight - activePageHeight;
+  // 10px content padding + 4px section margin + 2px rounding allowance.
+  const available = Math.floor(content.clientHeight - occupiedTop - 16);
+  const height = Math.max(120, Math.min(180, available));
+  if (section.style.height !== height + "px") section.style.height = height + "px";
+}
+
+function measureNavigatorRGBPage(activePageRect) {
+  const page = el("pageScreen");
+  const width = activePageRect.width;
+  const summary = el("imageSizeSummary").textContent;
+  if (currentTab === "screen") {
+    navigatorRGBPageMeasure = { width, summary, height: activePageRect.height };
+    return activePageRect.height;
+  }
+  if (navigatorRGBPageMeasure && navigatorRGBPageMeasure.width === width &&
+      navigatorRGBPageMeasure.summary === summary) return navigatorRGBPageMeasure.height;
+  if (!(width > 0) || !Number.isFinite(width)) return null;
+  // Measure the hidden RGB page at the current form width, outside normal flow.
+  // Restore every temporary style synchronously so no input or visible tab moves.
+  const previous = { className: page.className, position: page.style.position,
+    visibility: page.style.visibility, width: page.style.width };
+  let height;
+  try {
+    page.style.visibility = "hidden";
+    page.style.position = "absolute";
+    page.style.width = width + "px";
+    page.className = "page";
+    height = page.getBoundingClientRect().height;
+  } finally {
+    page.className = previous.className;
+    page.style.position = previous.position || "";
+    page.style.visibility = previous.visibility || "";
+    page.style.width = previous.width || "";
+  }
+  if (!(height > 0) || !Number.isFinite(height)) return null;
+  navigatorRGBPageMeasure = { width, summary, height };
+  return height;
+}
+
+function layoutNavigatorViewport() {
+  const frame = el("navigatorViewport");
+  const view = navigatorDrag ? navigatorDrag.draft : navigatorLastViewport;
+  if (!view || !navigatorLastPreview || view.documentId !== navigatorLastPreview.documentId) {
+    frame.className = "navigator-viewport hidden";
+    return;
+  }
+  const image = el("navigatorImage");
+  const width = parseFloat(image.style.width), height = parseFloat(image.style.height);
+  const visible = view.visible;
+  if (!(width > 0 && height > 0) || !visible || visible.right <= visible.left || visible.bottom <= visible.top) {
+    frame.className = "navigator-viewport hidden";
+    return;
+  }
+  const left = visible.left / view.width * width, top = visible.top / view.height * height;
+  frame.style.left = left + "px";
+  frame.style.top = top + "px";
+  frame.style.width = Math.min(width - left, Math.max(2, (visible.right - visible.left) / view.width * width)) + "px";
+  frame.style.height = Math.min(height - top, Math.max(2, (visible.bottom - visible.top) / view.height * height)) + "px";
+  frame.className = "navigator-viewport";
+}
+
+function renderNavigatorViewport(view) {
+  navigatorLastViewport = view;
+  if (navigatorDrag && (!view || view.documentId !== navigatorDrag.view.documentId)) navigatorDrag = null;
+  layoutNavigatorViewport();
+}
+
+function cancelNavigatorDrag() {
+  navigatorDrag = null;
+  layoutNavigatorViewport();
+}
+
+function startNavigatorDrag(event) {
+  const view = navigatorLastViewport, doc = host.active();
+  if (navigatorDrag || !view || !doc || doc.id !== view.documentId || navigatorZoomBusy ||
+      navigatorReadBusy || service.busy || colorDialogOpen || updateBusy ||
+      !Number.isFinite(event.clientX) || !Number.isFinite(event.clientY) ||
+      (event.button != null && event.button !== 0)) return;
+  if (!navigatorLastPreview || navigatorLastPreview.documentId !== view.documentId) return;
+  const rect = el("navigatorSurface").getBoundingClientRect();
+  if (!(rect.width > 0 && rect.height > 0)) return;
+  navigatorDrag = { view, draft: view, x: event.clientX, y: event.clientY,
+    scaleX: view.width / rect.width, scaleY: view.height / rect.height,
+    lastX: null, lastY: null };
+  if (typeof event.preventDefault === "function") event.preventDefault();
+}
+
+function moveNavigatorDrag(event) {
+  const drag = navigatorDrag;
+  if (!drag || !Number.isFinite(event.clientX) || !Number.isFinite(event.clientY)) return;
+  const doc = host.active();
+  if (!doc || doc.id !== drag.view.documentId) { cancelNavigatorDrag(); return; }
+  const view = drag.view;
+  // Keep a partially off-canvas starting view stable on click and on return.
+  const x = Math.max(Math.min(0, view.center.x), Math.min(Math.max(view.width, view.center.x),
+    view.center.x + (event.clientX - drag.x) * drag.scaleX));
+  const y = Math.max(Math.min(0, view.center.y), Math.min(Math.max(view.height, view.center.y),
+    view.center.y + (event.clientY - drag.y) * drag.scaleY));
+  if (x === drag.lastX && y === drag.lastY) return;
+  if (drag.lastX == null && drag.lastY == null &&
+      Math.abs(x - view.center.x) < 0.01 && Math.abs(y - view.center.y) < 0.01) return;
+  if (!navigatorZoom.requestPan({ documentId: view.documentId, zoom: view.zoom,
+    x: x * view.panScaleX, y: y * view.panScaleY })) { cancelNavigatorDrag(); return; }
+  drag.lastX = x; drag.lastY = y;
+  const dx = x - view.center.x, dy = y - view.center.y, bounds = view.bounds;
+  drag.draft = { ...view, center: { x, y }, bounds: {
+    left: bounds.left + dx, top: bounds.top + dy,
+    right: bounds.right + dx, bottom: bounds.bottom + dy
+  }, visible: {
+    left: Math.max(0, bounds.left + dx), top: Math.max(0, bounds.top + dy),
+    right: Math.min(view.width, bounds.right + dx), bottom: Math.min(view.height, bounds.bottom + dy)
+  } };
+  layoutNavigatorViewport();
+}
+
+function endNavigatorDrag(event) {
+  if (!navigatorDrag) return;
+  moveNavigatorDrag(event);
+  if (!navigatorDrag) return;
+  navigatorLastViewport = navigatorDrag.draft;
+  navigatorDrag = null;
+  layoutNavigatorViewport();
+  navigatorViewport.update(host.active());
+}
+
+function renderNavigatorPreview(preview) {
+  const image = el("navigatorImage");
+  const empty = el("navigatorEmpty");
+  el("navigatorHint").textContent = preview.state === "loading" ? "更新中…" : "";
+  if (preview.state === "ready") {
+    navigatorLastPreview = preview;
+    if (image.getAttribute("src") !== preview.src) image.setAttribute("src", preview.src);
+    image.className = "navigator-image";
+    el("navigatorSurface").className = "navigator-surface";
+    empty.className = "navigator-empty hidden";
+    layoutNavigatorImage();
+  } else if (preview.state === "loading" && navigatorLastPreview && navigatorLastPreview.documentId === preview.documentId) {
+    layoutNavigatorImage();
+  } else {
+    navigatorLastPreview = null;
+    image.removeAttribute("src");
+    image.className = "navigator-image hidden";
+    el("navigatorSurface").className = "navigator-surface hidden";
+    cancelNavigatorDrag();
+    empty.className = "navigator-empty";
+    empty.textContent = preview.message || (preview.state === "loading" ? "正在生成缩略图…" : "请打开 Photoshop 文档");
+  }
+}
+
 function refresh(explicit) {
   if (service.busy) return;
   try {
     const snapshot = service.snapshot();
-    renderDocumentSaveState(snapshot ? host.active() : null);
+    const doc = snapshot ? host.active() : null;
+    renderDocumentSaveState(doc);
+    navigatorZoom.update(doc);
+    navigatorPreview.update(doc);
+    navigatorViewport.update(doc);
+    layoutNavigatorImage();
     if (snapshot) snapshot.bitDepth = host.getBitDepth(host.active());
     const signature = JSON.stringify(snapshot);
     const changed = signature !== lastSignature;
@@ -934,6 +1202,32 @@ function renderDocumentSaveState(doc) {
   badge.title = doc && documentFolder(doc) ? "当前文件有未保存修改" : "当前文件尚未保存到本机";
 }
 
+async function saveCurrentDocument() {
+  if (service.busy || colorDialogOpen || updateBusy) return;
+  const doc = host.active();
+  if (!doc) { status("当前没有打开的文档。", true); return; }
+  service.busy = true;
+  disableAll(true);
+  let message = "", failed = false;
+  try {
+    const isCurrent = () => { const current = host.active(); return !!current && current.id === doc.id; };
+    status("正在保存当前文件…");
+    if (!await saveDocument(ps, doc, isCurrent)) {
+      message = "保存已取消或未确认完成。";
+      return;
+    }
+    renderDocumentSaveState(host.active());
+    message = "已保存当前文件。";
+  } catch (error) {
+    failed = true;
+    message = "保存失败：" + errorText(error);
+  } finally {
+    service.busy = false;
+    refresh(false);
+    status(message, failed);
+  }
+}
+
 async function openDocumentFolder() {
   if (service.busy || colorDialogOpen || updateBusy) return;
   const doc = host.active();
@@ -962,14 +1256,15 @@ async function openDocumentFolder() {
       }
     }
     if (!isCurrent()) throw new Error("当前文档已切换或关闭，请在目标文档重新操作。");
-    const folder = documentFolder(doc);
+    const current = host.active();
+    const folder = documentFolder(current);
     if (!folder) {
       message = "尚未获得本机文件路径，请在本机保存一份后重试。";
       await ps.core.showAlert({ message });
       return;
     }
     // 系统打开权限可能等待用户较久，原生保存成功后先清除红字。
-    renderDocumentSaveState(doc);
+    renderDocumentSaveState(current);
     status("正在打开当前文件所在文件夹…");
     const result = await shell.openPath(folder, "打开当前 Photoshop 文件所在的文件夹。");
     if (result !== "") throw new Error(result || "系统未能打开文件夹。");
@@ -990,7 +1285,8 @@ async function quickExport(format) {
   if (!doc) { status("当前没有打开的文档。", true); return; }
   service.busy = true;
   disableAll(true);
-  let message = "已取消导出。", failed = false, exportCancelled = false;
+  const saving = format === "psd" || format === "tiff";
+  let message = saving ? "已取消保存。" : "已取消导出。", failed = false, exportCancelled = false;
   try {
     if (format === "png") {
       status("正在调用 Photoshop 快速导出为 PNG…");
@@ -1008,6 +1304,17 @@ async function quickExport(format) {
     const name = String(doc.name || "未标题").replace(/\.(psd|psb|jpe?g|png|tiff?|webp|gif|bmp|pdf)$/i, "").replace(/[\\/:*?"<>|]/g, "_");
     const file = await storage.localFileSystem.getFileForSaving(name + "." + saveFormat.extension, { types: saveFormat.types });
     if (!file) return;
+    if (saving) {
+      const isCurrent = () => { const current = host.active(); return !!current && current.id === doc.id; };
+      status("正在将当前文件储存为 " + format.toUpperCase() + "…");
+      if (!await saveDocumentAs(ps, doc, format, file, isCurrent)) {
+        message = "保存已取消或未确认完成，当前文件仍有未保存修改。";
+        return;
+      }
+      renderDocumentSaveState(host.active());
+      message = "已保存 " + format.toUpperCase() + "：" + file.name + "。";
+      return;
+    }
     status("正在导出 " + format.toUpperCase() + "…");
     await host.modal(async context => {
       try { return await exportDocument(ps, doc, format, file, context); }
@@ -1021,9 +1328,9 @@ async function quickExport(format) {
   } catch (error) {
     console.error(error);
     if (exportCancelled || (error && (error.cancelled || error.code === "EXPORT_CANCELLED"))) {
-      message = "已取消导出。";
+      message = saving ? "已取消保存。" : "已取消导出。";
     } else {
-      message = "导出失败：" + errorText(error);
+      message = (saving ? "保存失败：" : "导出失败：") + errorText(error);
       failed = true;
     }
   } finally {
@@ -1381,6 +1688,7 @@ function start() {
     bindAction(el("modeRGB"), () => { void changeDocMode("RGB"); });
     bindAction(el("modeCMYK"), () => { void changeDocMode("CMYK"); });
     bindAction(el("openDocumentFolder"), () => { void openDocumentFolder(); });
+    bindAction(el("saveCurrentDocument"), () => { void saveCurrentDocument(); });
     bindAction(el("exportJPG"), () => { void quickExport("jpg"); });
     bindAction(el("exportPNG"), () => { void quickExport("png"); });
     bindAction(el("exportPSD"), () => { void quickExport("psd"); });
@@ -1395,15 +1703,34 @@ function start() {
     el("checkUpdate").addEventListener("click", () => { void checkUpdate(); });
     el("installUpdate").addEventListener("click", () => { void installUpdate(); });
     bindAction(el("openRelease"), () => { void openRelease(); });
+    el("navigatorImage").addEventListener("error", () => renderNavigatorPreview({ state: "error", message: "缩略图暂时无法显示" }));
+    el("navigatorZoom").addEventListener("input", previewNavigatorZoom);
+    el("navigatorZoom").addEventListener("change", commitNavigatorZoom);
+    el("navigatorZoomOut").addEventListener("click", () => navigatorZoom.step(-1));
+    el("navigatorZoomIn").addEventListener("click", () => navigatorZoom.step(1));
+    el("navigatorViewport").addEventListener("mousedown", startNavigatorDrag);
+    document.addEventListener("mousemove", moveNavigatorDrag);
+    document.addEventListener("mouseup", endNavigatorDrag);
+    window.addEventListener("blur", cancelNavigatorDrag);
     initialized = true;
   }
+  navigatorZoom.start();
+  navigatorPreview.start();
+  navigatorViewport.start();
   setDisabled("visibility", false);
   refresh(true);
   // Lightweight polling avoids dependence on notification event variants.
   if (!timer) timer = setInterval(() => refresh(false), 1200);
+  if (!navigatorViewTimer) navigatorViewTimer = setInterval(() => navigatorViewport.update(host.active()), 250);
 }
 
 function stop() {
+  navigatorZoom.stop();
+  navigatorPreview.stop();
+  navigatorViewport.stop();
+  cancelNavigatorDrag();
+  if (navigatorViewTimer) clearInterval(navigatorViewTimer);
+  navigatorViewTimer = null;
   if (timer) clearInterval(timer);
   timer = null;
 }

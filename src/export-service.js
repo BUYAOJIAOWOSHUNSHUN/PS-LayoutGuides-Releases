@@ -264,7 +264,7 @@ function ensureActiveDocument(ps, expectedId) {
   }
 }
 
-async function saveTiffCopy(ps, doc, file, executionContext) {
+async function saveTiffDocument(ps, doc, file, executionContext, asCopy = true) {
   const action = ps.action;
   if (!action || typeof action.batchPlay !== "function") {
     throw makeError("当前 Photoshop 环境不支持 TIFF 保存命令。", "EXPORT_SAVE_UNAVAILABLE");
@@ -295,7 +295,7 @@ async function saveTiffCopy(ps, doc, file, executionContext) {
     _obj: "save",
     as: { _obj: "TIFF" },
     in: { _path: fileToken, _kind: "local" },
-    copy: true,
+    copy: asCopy,
     _options: { dialogOptions: "dontDisplay" }
   };
   const results = await action.batchPlay([descriptor], {
@@ -536,7 +536,7 @@ async function exportDocument(ps, doc, format, file, executionContext) {
       }
       await saveAs.psd(file, { layers: true }, true);
     } else if (normalizedFormat === "tiff") {
-      await saveTiffCopy(ps, copy, file, executionContext);
+      await saveTiffDocument(ps, copy, file, executionContext);
     } else if (!saveAs || typeof saveAs[normalizedFormat] !== "function") {
       throw makeError("当前 Photoshop 环境不支持 " + normalizedFormat.toUpperCase() + " 保存接口。", "EXPORT_SAVE_UNAVAILABLE");
     } else if (normalizedFormat === "jpg") {
@@ -582,4 +582,4 @@ async function exportDocument(ps, doc, format, file, executionContext) {
   return result;
 }
 
-module.exports = { exportDocument, exportQuickPNG };
+module.exports = { exportDocument, exportQuickPNG, saveTiffDocument };

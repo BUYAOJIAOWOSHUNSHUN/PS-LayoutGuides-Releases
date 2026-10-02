@@ -4,6 +4,59 @@
 文中验证文件路径指向开发时的本地版本归档；验证文件不随公开源码或安装包分发。
 每条都注明依据，标注「待真机验证」的表示只在逻辑层验证过。
 
+## v2.1.4：独立保存按钮（2026-10-02）
+
+“打开文件夹”右侧增加“保存”，复用src/document-save.js的saveDocument，调用活动文档原生save()。首次保存由Photoshop显示保存窗口；已有文件沿用原路径，不打开系统文件夹，不经过PSD／TIFF储存为按钮。云文档不套用打开本机文件夹的限制，交由原生保存处理；云文档仅有逻辑检查，未真机验证。
+
+按钮接入统一禁用列表与鼠标／Enter／Space动作。保存开始前同步设置busy，阻止重复点击及其他受保护操作；完成、取消或失败均解除busy并刷新实际保存状态。保存前后检查文档ID，取消或未确认saved=true时不显示保存成功。82项定向检查与main.js语法检查通过，独立审查未发现必要缺陷。
+
+2026-10-02真机入口验收：Photoshop 27.9.1，RGB8临时稿，600×400、100PPI。实际点击新增按钮：首次取消保持saved=false、无路径、红字保留，面板恢复；首次保存PSD后saved=true、路径／名称正确、红字消失；编辑文字后再次点击直接保存原位置，无文件选择或目录授权弹窗。第一次保存历史21，编辑后历史22，第二次保存仍22；智能对象、可编辑文字／分组、隐藏层及选区保持。输出PSD哈希随第二次保存变化，测试稿已关闭。鼠标入口已真机验证；键盘入口、云文档及磁盘错误等仅由逻辑检查覆盖。详情 `验证/host-acceptance.md`。
+
+## v2.1.4：导航器缩略图、视图缩放与红框平移
+
+`imaging.getPixels` 指定 `documentID`、整画布 `sourceBounds`、最多 480×240 的 `targetSize`，读取当前合成结果，不指定单一 `layerID` 或 `historyStateID`。请求 RGB / sRGB / 8 位和 `applyAlpha:true`，只在小尺寸缓冲区中处理。历史状态与嵌套图层可见性用于去重和异步结果核对，不用于锁定历史取像；图层显隐在本机可能不增加历史状态。
+
+Photoshop 可能裁掉透明边缘。返回的 `sourceBounds` 对应 `level` 的缓存坐标，乘以 `2^level` 后才映射回原画布。将小尺寸裁剪结果拼回白底整画布，再由 `createImageDataFromBuffer` 和 `encodeImageData({base64:true})` 生成 JPEG 数据 URI。JPEG 仅用于面板预览。每条成功、失败和过期路径都释放源与生成的 `PhotoshopImageData`。
+
+历史标识、图层可见性、文档 ID、模式或尺寸变化才请求新像素。可见性使用最多 5000 层的有界迭代，集合异常、缺失或超界，以及历史标识不可读时退为 5 秒慢刷新。每次最多一个像素读取；普通读取失败至少隔 5 秒再试；Imaging API 不存在时报告局部错误，不阻止面板启动。构造不触发读取，面板隐藏后不再发起请求。
+
+Imaging 操作在单次 `executeAsModal` 作用域内读取、合成、编码及释放，不调用文档修改命令。`PhotoshopImageData` 是原生代理，按尺寸、RGB / 8 位 / 3 通道及方法校验，兼容 callable 值。原始错误在作用域内保存，再在作用域外处理，避免 Photoshop 包装回调错误后丢失诊断阶段。
+
+视图缩放读取 `Document.zoom` 的百分比。通过 `setPanZoom` 指定文档 ID，`z` 使用百分比除以 100 的比例值，`resize:false`、`animate:false`，在 modal 作用域中执行，再回读真实比例。队列最多一个命令在执行，保留最新值，切换文档或隐藏面板后丢弃过期请求。滑条 `input` 仅预览百分比，`change` 提交视图缩放，轮询不覆盖拖动草稿，也不重复写入控件状态。滑条范围 0.08%–12800% 是本插件配置，未声称为所有 Photoshop 版本的官方上限。
+
+红框以文档 ID 分别读取 `viewInfo.activeView.globalBounds` 和六项 `viewTransform`，每 250ms 检查，最多一批在读取，面板隐藏后停止。Windows 屏幕比例来自 `core.getDisplayConfiguration()` 的 `globalBounds` / `scaleFactor`；Mac 使用逻辑坐标。矩阵将视口局部逻辑坐标映射为画布像素；本机原生边界为含末端像素的范围，所以跨度使用 `right-left+1` 与 `bottom-top+1`。红框裁切到画布，平移使用未裁切中心。读取期间文档 ID、尺寸或倍率变化则丢弃并重读；无法命中屏幕缩放或视图旋转时隐藏红框。
+
+本机 72 / 100 PPI 临时文档校准确认：`setPanZoom.x/y` 虽标为 `pixelsUnit`，实际接收的是视图坐标，不是直接的画布中心像素。非旋转矩阵对角值为 `a,d` 时，目标中心 `cx,cy` 需使用 `x=cx/a,y=cy/d`；PPI 未另行换算。拖动和平移与缩放共享一个 modal 写入队列，保留最新坐标，过期文档或倍率不会被恢复。拖动时先显示目标红框，再回读真实视口；未提交尺寸草稿保持原值。
+
+真机已验证 RGB 8 位透明边缘、CMYK 16 位竖幅、空透明白底、文档切换、同历史状态下显隐刷新、内容编辑 / 历史回退刷新、尺寸草稿保留、缩放按钮 / 点选轨道与红框显示 / 双向拖动。用户补测持续拖动红框及缩放滑块，反馈“正常”。空透明文档返回有效像素 / 空边界时显示白底；null imageData 仍提示无法读取，不把未知值认作成功。模拟测试不能替代其他宿主版本的验证。
+
+视口变换依据本机 Adobe 自带 `Required/UXP/com.adobe.photoshop.inAppMessaging/js/792.js` 内嵌源 `src/utils/location.ts` 的变换方向，以及 `验证/host-output/viewport-pan-calibration.txt` 的原生命令校准。相关公开文档：https://developer.adobe.com/photoshop/uxp/2022/ps-reference/media/displayunits 与 https://developer.adobe.com/photoshop/uxp/2022/ps-reference/objects/returnobjects/displayconfiguration 。其他显示配置和 Photoshop 版本仍需各自验证。
+
+依据（2026-09-30 查阅）：
+- https://developer.adobe.com/photoshop/uxp/2022/ps-reference/media/imaging
+- https://developer.adobe.com/photoshop/uxp/2022/ps-reference/classes/document
+- https://developer.adobe.com/photoshop/uxp/2022/ps-reference/media/executeasmodal
+- https://developer.adobe.com/photoshop/uxp/2022/uxp-api/reference-spectrum/spectrum-uxp-widgets/user-interface/sp-slider
+- 本机 Adobe 内置 `Required/UXP/common.js` 和 `com.adobe.photoshop.adjustments-panel/js/ps.js`；本版临时文档的截图观察与原生视图查询。
+
+---
+
+## v2.1.4：保存归属与完成状态修复
+
+旧 PSD／TIFF 按钮调用临时 duplicate 的副本保存；原文档仍未保存是该实现的实际结果。当前按钮按“文件→储存为”目标保存当前文档：PSD 使用 `saveAs.psd(file, {layers:true}, false)`，TIFF 原生 `save` descriptor 使用 `copy:false`。文件名、路径和 saved 状态由 Photoshop 更新，不手工伪造。JPG／PNG 继续导出，不清除原文档的未保存修改。
+
+`save()`／储存为进入与退出 modal 前后均检查目标文档 ID；操作前及完成后读取新的 `ps.app.activeDocument`。保存完成最多读取26次 actual `saved===true`，间隔200ms，最长约5秒；该等待只读状态，不重复保存。取消在 modal 回调内识别，避免宿主包装异常后丢失取消字段；取消、失败或始终未确认保存完成时不打开目录、不强制隐藏红字。
+
+原生“现在保存”曾出现的真实异常根因尚未确认；新对象重读与延迟等待属于兼容处理，须以真机结果判断。保存相关72项定向检查通过，覆盖路径归属、对象更新、延迟、取消、文档切换与 JPG／PNG 回归；真机记录在本地 `验证/host-acceptance.md`。
+
+本机Photoshop27.9.1已确认首次save、已有PSD再次save、当前文档PSD储存为与CMYK16位TIFF默认保存：saved=true，名称与路径正确，面板红字清除。确认窗、PSD位置选择及TIFF原生选项取消时保持未保存。真实关闭并重开PSD／TIFF后文字、智能对象、分组、隐藏层、尺寸、模式与位深保留。该结果验证这些临时样本，未复现用户原文件上的旧异常。
+
+打开目录沿用`uxp.shell.openPath`和manifest既有空扩展名授权。Adobe要求用户明确同意，可在原生窗口“记住我的选择”；公开接口没有自动批准或静默跳过授权参数。本机同一测试目录第二次打开未再请求权限，其他目录与重新安装后的复用未验证。依据：https://developer.adobe.com/uxp/guides/how-to/recipes/external-process/ 。
+
+依据（2026-10-01）：https://developer.adobe.com/photoshop/uxp/2022/ps-reference/classes/document 。`saved` 表示最后修改后是否保存；`save()` 保存当前位置，首次保存提示原生窗口；`saveAs` 的 `asCopy` 参数决定保存归属。
+
+---
+
 ## v2.1.3：保存状态与原生保存
 
 `Document.saved` 表示最后一次修改后是否保存，不能用它判断文件路径是否存在。`Document.path` 对本地文件为完整路径，对云文档为标识。红字单独刷新，不加入尺寸变化判断，避免保存状态变化冲掉输入草稿。

@@ -1,5 +1,12 @@
 "use strict";
 
+const { saveTiffDocument } = require("./export-service.js");
+
+function isSaveCancelled(error) {
+  return !!error && (error.number === -128 || error.code === -128 ||
+    error.code === "EXPORT_CANCELLED" || error.cancelled === true);
+}
+
 // 先让用户确认，再进入 Photoshop 原生保存流程；插件不指定文件名或格式。
 async function confirmDocumentSave(document, message) {
   const dialog = document.createElement("dialog");
@@ -32,7 +39,7 @@ async function confirmDocumentSave(document, message) {
   }
 }
 
-async function saveDocument(ps, doc, isCurrent) {
+async function saveWithModal(ps, doc, isCurrent, operation, commandName, options = {}) {
   let cancelled = false;
   const checkCurrent = () => {
     if (!isCurrent()) throw new Error("当前文档已切换或关闭，请在目标文档重新操作。");
@@ -43,9 +50,13 @@ async function saveDocument(ps, doc, isCurrent) {
       checkCurrent();
       if (context.isCancelled) { cancelled = true; return; }
       try {
-        await doc.save();
+        const current = ps.app ? ps.app.activeDocument : doc;
+        if (!current || (doc.id != null && current.id !== doc.id)) {
+          throw new Error("当前文档已切换或关闭，请在目标文档重新操作。");
+        }
+        await operation(current, context);
       } catch (error) {
-        if (context.isCancelled || error.number === -128 || error.code === -128) {
+        if (context.isCancelled || isSaveCancelled(error)) {
           cancelled = true;
           return;
         }
@@ -53,13 +64,46 @@ async function saveDocument(ps, doc, isCurrent) {
       }
       cancelled = context.isCancelled;
       checkCurrent();
-    }, { commandName: "保存当前文件", interactive: true });
+    }, { commandName, interactive: true });
   } catch (error) {
-    if (error.number === -128 || error.code === -128) return false;
+    if (isSaveCancelled(error)) return false;
     throw error;
   }
   checkCurrent();
-  return !cancelled && doc.saved === true;
+  if (cancelled) return false;
+  // Save may replace the DOM wrapper or finish updating its saved flag later.
+  // Never hide the badge based only on the command returning successfully.
+  const attempts = options.attempts || 26;
+  const pause = options.pause || (() => new Promise(resolve => setTimeout(resolve, 200)));
+  for (let i = 0; i < attempts; i++) {
+    checkCurrent();
+    const current = ps.app ? ps.app.activeDocument : doc;
+    if (!current || (doc.id != null && current.id !== doc.id)) {
+      throw new Error("当前文档已切换或关闭，请在目标文档重新操作。");
+    }
+    if (current.saved === true) return true;
+    if (i + 1 < attempts) await pause();
+  }
+  return false;
 }
 
-module.exports = { confirmDocumentSave, saveDocument };
+async function saveDocument(ps, doc, isCurrent, options) {
+  return saveWithModal(ps, doc, isCurrent, current => current.save(), "保存当前文件", options);
+}
+
+async function saveDocumentAs(ps, doc, format, file, isCurrent, options) {
+  if (format !== "psd" && format !== "tiff") throw new Error("请选择PSD或TIFF保存格式。");
+  if (!file || typeof file !== "object") throw new Error("没有选择有效的保存位置。");
+  return saveWithModal(ps, doc, isCurrent, async (current, context) => {
+    if (format === "psd") {
+      if (!current.saveAs || typeof current.saveAs.psd !== "function") {
+        throw new Error("当前Photoshop环境不支持PSD储存为接口。");
+      }
+      await current.saveAs.psd(file, { layers: true }, false);
+    } else {
+      await saveTiffDocument(ps, current, file, context, false);
+    }
+  }, "将当前文件储存为 " + format.toUpperCase(), options);
+}
+
+module.exports = { confirmDocumentSave, saveDocument, saveDocumentAs };

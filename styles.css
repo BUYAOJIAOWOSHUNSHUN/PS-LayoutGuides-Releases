@@ -1,4 +1,4 @@
-/* UXP 面板：Flex + 明确外边距；不依赖 grid、gap 或绝对定位。
+/* UXP 面板：Flex + 明确外边距；导航器红框在缩略图内使用绝对定位。
 
    配色全部取自 Photoshop 自己的界面色（2026-09-18 从真机截图里逐像素采样得到）：
      #323232  面板背景      #262626  面板标签栏/深色面     #2b2b2b  次级面
@@ -42,7 +42,8 @@ html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
 .tab.active .tab-tag { color: #6fa8ea; }
 
 /* 宽度跟随窗口，只有中间内容滚动。参数区统一最小高度，内容多时自然撑开。 */
-.scroll-content { flex: 1; min-height: 0; min-width: 0; overflow-y: auto; overflow-x: hidden; padding: 10px 14px; }
+.scroll-content { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; overflow-y: auto; overflow-x: hidden; padding: 10px 14px; }
+.scroll-content > .document-card, .scroll-content > .page, .scroll-content > .guide-section { flex-shrink: 0; }
 /* 文档卡：左边文档名 + 尺寸信息，右边颜色模式芯片（显示当前模式，点击即转换）。 */
 .document-card { display: flex; flex-direction: row; align-items: center; justify-content: space-between; padding-bottom: 14px; }
 .document-info { flex: 1; min-width: 0; }
@@ -56,7 +57,8 @@ html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
 .document-actions .mode-option { flex: 1; text-align: center; min-width: 0; padding: 3px 4px; }
 .folder-row { display: flex; flex-direction: row; align-items: center; margin-top: 6px; }
 .document-unsaved { color: #ff7777; font-size: 10px; margin-left: 8px; flex-shrink: 0; }
-.open-folder-button { width: 84px; box-sizing: border-box; padding: 3px 4px; border: 1px solid #545454; border-radius: 4px; font-size: 10px; color: #c2c2c2; text-align: center; cursor: pointer; }
+.open-folder-button { width: 84px; flex-shrink: 0; box-sizing: border-box; padding: 3px 4px; border: 1px solid #545454; border-radius: 4px; font-size: 10px; color: #c2c2c2; text-align: center; cursor: pointer; }
+.document-save-button { width: 44px; margin-left: 8px; }
 .open-folder-button:hover { background: #3b4c60; color: #ffffff; }
 .open-folder-button[disabled] { opacity: 0.45; cursor: default; }
 .save-dialog { padding: 20px; background: #303030; color: #e0e0e0; }
@@ -74,7 +76,7 @@ html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
 .mode-option[disabled] { opacity: 0.45; cursor: default; }
 .document-name { font-size: 13px; font-weight: 600; line-height: 19px; overflow-wrap: break-word; }
 .muted, small { display: block; color: #a2a2a2; font-size: 11px; line-height: 17px; margin-top: 3px; overflow-wrap: break-word; }
-/* 页面高度由内容自然决定（min-height 会把内容少的屏幕页下方撑出一大段空白）。 */
+/* RGB页按内容自然决定高度；JS将CMYK页最小高度同步为RGB页高度，空白留在出血设置下方。 */
 .page { display: block; box-sizing: border-box; }
 .section-heading { display: flex; align-items: center; justify-content: space-between; min-height: 21px; margin-bottom: 6px; }
 /* 标题行右侧控制区：锁定芯片 + mm/cm 单位切换，等高并排。 */
@@ -207,6 +209,19 @@ input.size-input[disabled], input.bleed-field[disabled] { color: #a2a2a2; backgr
 .anchor-cell:hover { background: #4a4a4a; }
 .anchor-cell.active { background: #1473e6; }
 .guide-section { margin-top: 10px; }
+/* JS按RGB页所需空间设定两页共用的高度；不随当前页内容伸缩。 */
+.navigator-section { display: flex; flex-direction: column; flex: 0 0 auto; height: 180px; min-height: 120px; max-height: 180px; margin-top: 10px; margin-bottom: 4px; }
+.navigator-heading { display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; margin-bottom: 6px; }
+.navigator-hint { margin-left: 8px; font-size: 10px; color: #a2a2a2; }
+.navigator-stage { display: flex; align-items: center; justify-content: center; flex: 1; min-width: 0; min-height: 0; padding: 8px; background: #2b2b2b; border: 1px solid #454545; border-radius: 6px; overflow: hidden; }
+.navigator-image { display: block; flex-shrink: 0; }
+.navigator-surface { position: relative; flex-shrink: 0; }
+.navigator-viewport { position: absolute; border: 2px solid #ff4545; box-sizing: border-box; background: transparent; cursor: move; }
+.navigator-empty { padding: 12px; color: #a2a2a2; font-size: 11px; line-height: 18px; text-align: center; }
+.navigator-zoom-controls { display: flex; align-items: center; flex-shrink: 0; height: 30px; margin-top: 5px; }
+.navigator-zoom-value { flex-shrink: 0; width: 58px; font-size: 11px; color: #bdbdbd; }
+.navigator-zoom-step { flex-shrink: 0; width: 24px; min-width: 24px; height: 24px; padding: 0; font-size: 14px; }
+#navigatorZoom { flex: 1; min-width: 0; margin: 0 8px; }
 /* 生成辅助线行（v1.9.16 改为并列一行，老大要求）：版心线与下面「删除辅助线」
    按钮完全等宽（都是内容宽的一半减 4px —— 下方两按钮各 flex:1 中隔 8px），
    LOGO 高度线 / 背书高度线平分剩余宽度。两个页签共用这一组，改一处两边生效。 */
